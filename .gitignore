@@ -11,8 +11,8 @@ __pycache__/
 DCT.egg-info/
 venv.yml
 
-model_save/
-datasets/
+model_save
+datasets
 logs/
 standalone/osirim/logs/
 
