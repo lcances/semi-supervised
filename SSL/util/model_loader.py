@@ -1,9 +1,9 @@
-import DCT.models.ubs8k as u8
-import DCT.models.ubs8k_test as u8_test
-import DCT.models.cifar10 as c10
-import DCT.models.esc as esc
-import DCT.models.speechcommands as sc
-import DCT.models.gtzan as gtzan
+import SSL.models.ubs8k as u8
+import SSL.models.ubs8k_test as u8_test
+import SSL.models.cifar10 as c10
+import SSL.models.esc as esc
+import SSL.models.speechcommands as sc
+import SSL.models.gtzan as gtzan
 
 import inspect
 import logging
