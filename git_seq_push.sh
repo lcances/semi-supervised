@@ -3,7 +3,7 @@
 # Adjust the following variables as necessary
 REMOTE=origin
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-BATCH_SIZE=1
+BATCH_SIZE=2
 
 echo "REMOTE $REMOTE"
 echo "BRANCH $BRANCH"
