@@ -1,7 +1,7 @@
 from ubs8k.datasetManager import DatasetManager
 from ubs8k.datasets import Dataset
-from DCT.util.utils import ZipCycle
-from DCT.augmentation_list import augmentations
+from SSL.util.utils import ZipCycle
+from SSL.augmentation_list import augmentations
 from torch.nn import Module
 
 
@@ -11,7 +11,7 @@ from copy import copy
 import torch.utils.data as torch_data
 
 
-def load_supervised(
+def supervised(
     dataset_root,
     supervised_ratio: float = 1.0,
     batch_size: int = 64,
@@ -57,7 +57,7 @@ def load_supervised(
     return manager, train_loader, val_loader
 
 
-def student_teacher(
+def mean_teacher(
     dataset_root,
     supervised_ratio: float = 0.1,
     batch_size: int = 64,
@@ -114,7 +114,7 @@ def student_teacher(
     return manager, train_loader, val_loader
 
 
-def load_dct(
+def dct(
         dataset_root,
         supervised_ratio: float = 0.1,
         batch_size: int = 100,
@@ -167,7 +167,7 @@ def load_dct(
     return manager, train_loader, val_loader
 
 
-def load_dct_aug4adv(
+def dct_aug4adv(
         dataset_root,
         supervised_ratio: float = 0.1,
         batch_size: int = 100,
@@ -264,3 +264,15 @@ def load_dct_aug4adv(
         val_dataset, batch_size=batch_size, shuffle=True)
 
     return manager, train_loader, val_loader
+
+
+def dct_uniloss(
+        dataset_root,
+        supervised_ratio: float = 0.1,
+        batch_size: int = 100,
+
+        train_folds: tuple = (1, 2, 3, 4, 5, 6, 7, 8, 9),
+        val_folds: tuple = (10, ),
+
+        verbose=1, **kwargs):
+    return dct(**locals())

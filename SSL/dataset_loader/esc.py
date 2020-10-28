@@ -63,8 +63,7 @@ class ESC50_NoSR(ESC50):
 # =============================================================================
 #       DEEP CO-TRAINING
 # =============================================================================
-
-def load_esc10_dct(
+def dct(
         dataset_root,
         supervised_ratio: float = 0.1,
         batch_size: int = 100,
@@ -76,16 +75,16 @@ def load_esc10_dct(
     return load_dct_helper(ESC10_NoSR, **locals())
 
 
-def load_esc50_dct(
-        dataset_root,
-        supervised_ratio: float = 0.1,
-        batch_size: int = 100,
-        train_folds: tuple = (1, 2, 3, 4),
-        val_folds: tuple = (5, ),
-        train_transform: Module = None,
-        val_transform: Module = None,
-        **kwargs) -> Tuple[DataLoader, DataLoader]:
-    return load_dct_helper(ESC50_NoSR, **locals())
+# def esc50_dct(
+#         dataset_root,
+#         supervised_ratio: float = 0.1,
+#         batch_size: int = 100,
+#         train_folds: tuple = (1, 2, 3, 4),
+#         val_folds: tuple = (5, ),
+#         train_transform: Module = None,
+#         val_transform: Module = None,
+#         **kwargs) -> Tuple[DataLoader, DataLoader]:
+#     return load_dct_helper(ESC50_NoSR, **locals())
 
 
 def load_dct_helper(
@@ -140,9 +139,24 @@ def load_dct_helper(
 
 
 # =============================================================================
+#       DEEP CO-TRAINING
+# =============================================================================
+def dct_uniloss(
+        dataset_root,
+        supervised_ratio: float = 0.1,
+        batch_size: int = 100,
+        train_folds: tuple = (1, 2, 3, 4),
+        val_folds: tuple = (5, ),
+        train_transform: Module = None,
+        val_transform: Module = None,
+        **kwargs) -> Tuple[DataLoader, DataLoader]:
+    return load_dct_helper(ESC10_NoSR, **locals())
+
+
+# =============================================================================
 #        SUPERVISED DATASETS
 # =============================================================================
-def load_esc10_supervised(
+def supervised(
         dataset_root,
         supervised_ratio: float = 1.0,
         batch_size: int = 128,
@@ -154,16 +168,16 @@ def load_esc10_supervised(
                                    **kwargs)
 
 
-def load_esc50_supervised(
-        dataset_root,
-        supervised_ratio: float = 1.0,
-        batch_size: int = 128,
-        train_folds: tuple = (1, 2, 3, 4),
-        val_folds: tuple = (5, ),
-        **kwargs) -> Tuple[DataLoader, DataLoader]:
-    return _load_supervised_helper(ESC50_NoSR, dataset_root, supervised_ratio,
-                                   batch_size, train_folds, val_folds,
-                                   **kwargs)
+# def esc50_supervised(
+#         dataset_root,
+#         supervised_ratio: float = 1.0,
+#         batch_size: int = 128,
+#         train_folds: tuple = (1, 2, 3, 4),
+#         val_folds: tuple = (5, ),
+#         **kwargs) -> Tuple[DataLoader, DataLoader]:
+#     return _load_supervised_helper(ESC50_NoSR, dataset_root, supervised_ratio,
+#                                    batch_size, train_folds, val_folds,
+#                                    **kwargs)
 
 
 def _load_supervised_helper(
@@ -211,33 +225,33 @@ def _load_supervised_helper(
 
 
 # =============================================================================
-#        SUPERVISED DATASETS
+#        MEAN TEACHER
 # =============================================================================
-def esc10_student_teacher(
+def mean_teacher(
         dataset_root,
         supervised_ratio: float = 0.1,
         batch_size: int = 128,
         train_folds: tuple = (1, 2, 3, 4),
         val_folds: tuple = (5, ),
         **kwargs) -> Tuple[DataLoader, DataLoader]:
-    return _student_teacher_helper(ESC10_NoSR, dataset_root, supervised_ratio,
+    return _mean_teacher_helper(ESC10_NoSR, dataset_root, supervised_ratio,
                                    batch_size, train_folds, val_folds,
                                    **kwargs)
 
 
-def esc50_student_teacher(
-        dataset_root,
-        supervised_ratio: float = 0.1,
-        batch_size: int = 128,
-        train_folds: tuple = (1, 2, 3, 4),
-        val_folds: tuple = (5, ),
-        **kwargs) -> Tuple[None, DataLoader, DataLoader]:
-    return _student_teacher_helper(ESC50_NoSR, dataset_root, supervised_ratio,
-                                   batch_size, train_folds, val_folds,
-                                   **kwargs)
+# def mean_teacher(
+#         dataset_root,
+#         supervised_ratio: float = 0.1,
+#         batch_size: int = 128,
+#         train_folds: tuple = (1, 2, 3, 4),
+#         val_folds: tuple = (5, ),
+#         **kwargs) -> Tuple[None, DataLoader, DataLoader]:
+#     return _student_teacher_helper(ESC50_NoSR, dataset_root, supervised_ratio,
+#                                    batch_size, train_folds, val_folds,
+#                                    **kwargs)
 
 
-def _student_teacher_helper(
+def _mean_teacher_helper(
         dataset_class: Union[ESC10, ESC50],
         dataset_root,
         supervised_ratio: float = 0.1,

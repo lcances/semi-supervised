@@ -21,16 +21,16 @@ def supervised(optimizer: Optimizer, **kwargs) -> list:
     return [lr_scheduler]
 
 
-def dct(**kwargs) -> list:
+def dct(optimizer: Optimizer, **kwargs) -> list:
     lr_scheduler = LambdaLR(optimizer, lr_lambda)
     return [lr_scheduler]
 
 
-def dct_uniloss() -> list:
+def dct_uniloss(optimizer: Optimizer) -> list:
     lr_scheduler = LambdaLR(optimizer, lr_lambda)
     return [lr_scheduler]
 
 
-def student_teacher() -> list:
+def mean_teacher(optimizer: Optimizer) -> list:
     lr_scheduler = LambdaLR(optimizer, lr_lambda)
     return [lr_scheduler]

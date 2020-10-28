@@ -243,7 +243,7 @@ class SpeechCommandsNoLoad(SpeechCommands):
         return target_mapper[label], speaker_id, utterance_number
 
 
-def load_dct(
+def dct(
     dataset_root,
     supervised_ratio: float = 0.1,
     batch_size: int = 100,
@@ -291,7 +291,19 @@ def load_dct(
     return None, train_loader, val_loader
 
 
-def student_teacher(
+def dct_uniloss(
+        dataset_root,
+        supervised_ratio: float = 0.1,
+        batch_size: int = 100,
+
+        train_transform: Module = None,
+        val_transform: Module = None,
+
+        **kwargs) -> Tuple[DataLoader, DataLoader]:
+    return dct(**locals())
+
+
+def mean_teacher(
         dataset_root,
         supervised_ratio: float = 0.1,
         batch_size: int = 128,
@@ -336,7 +348,7 @@ def student_teacher(
 # =============================================================================
 #        SUPERVISED DATASETS
 # =============================================================================
-def load_supervised(
+def supervised(
         dataset_root,
         supervised_ratio: float = 1.0,
         batch_size: int = 128,
