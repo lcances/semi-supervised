@@ -11,6 +11,7 @@ __pycache__/
 DCT.egg-info/
 venv.yml
 
+tensorboard/
 model_save
 datasets
 logs/
