@@ -54,7 +54,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--from_config", default="", type=str)
 parser.add_argument("-d", "--dataset_root", default="../../datasets/", type=str)
-parser.add_argument("-D", "--dataset", default="ubs8k", type=str)
+parser.add_argument("-D", "--dataset", default="esc10", type=str)
 
 group_t = parser.add_argument_group("Commun parameters")
 group_t.add_argument("--model", default="wideresnet28_2", type=str)
@@ -69,8 +69,8 @@ group_m = parser.add_argument_group("Model parameters")
 group_m.add_argument("--num_classes", default=10, type=int)
 
 group_u = parser.add_argument_group("ESC and UBS8K parameters")
-group_u.add_argument("-t", "--train_folds", nargs="+", default=[1, 2, 3, 4, 5, 6, 7, 8, 9], type=int)
-group_u.add_argument("-v", "--val_folds", nargs="+", default=[10], type=int)
+group_u.add_argument("-t", "--train_folds", nargs="+", default=[1, 2, 3, 4], type=int)
+group_u.add_argument("-v", "--val_folds", nargs="+", default=[5], type=int)
 
 group_h = parser.add_argument_group('hyperparameters')
 group_h.add_argument("--lambda_cot_max", default=1, type=float)
@@ -180,8 +180,8 @@ s = summary(m1, tuple(input_shape))
 
 
 # tensorboard
-tensorboard_title = f"{args.model}/{args.supervised_ratio}S/"                     f"{get_datetime()}_{model_func.__name__}_JS"
-checkpoint_title = f"{args.model}/{args.supervised_ratio}S/"                    f"{args.model}_JS"
+tensorboard_title = f"{args.model}/{args.supervised_ratio}S/"                     f"{get_datetime()}_{model_func.__name__}_MSE"
+checkpoint_title = f"{args.model}/{args.supervised_ratio}S/"                    f"{args.model}_MSE"
 
 tensorboard = mSummaryWriter(log_dir=f"{tensorboard_path}/{tensorboard_title}",comment=model_func.__name__)
 print(os.path.join(tensorboard_path, tensorboard_title))
@@ -222,6 +222,8 @@ adv_generator_2 = GradientSignAttack(
 
 # Losses
 # see losses.py
+import torch.nn as nn
+mse_loss = nn.MSELoss(reduction="mean")
 
 # define the warmups & add them to the callbacks (for update)
 lambda_cot = Warmup(args.lambda_cot_max, args.warmup_length, sigmoid_rampup)
@@ -365,7 +367,8 @@ def train(epoch):
         with autocast():
             l_sup = loss_sup(logits_s1, logits_s2, y_s1, y_s2)
 
-            l_cot = loss_cot(logits_u1, logits_u2)
+            # l_cot = loss_cot(logits_u1, logits_u2)
+            l_cot = mse_loss(logits_u1, logits_u2)
 
             l_diff = loss_diff(
                 logits_s1, logits_s2, adv_logits_s1, adv_logits_s2,
@@ -498,7 +501,7 @@ def test(epoch, msg = ""):
     checkpoint.step(acc_1.mean)
 
 
-# In[ ]:
+# In[22]:
 
 
 print(header)
@@ -517,7 +520,7 @@ for epoch in range(0, args.nb_epoch):
     tensorboard.flush()
 
 
-# In[ ]:
+# In[23]:
 
 
 hparams = {}
@@ -533,7 +536,7 @@ tensorboard.flush()
 tensorboard.close()
 
 
-# In[ ]:
+# In[25]:
 
 
 import matplotlib.pyplot as plt
