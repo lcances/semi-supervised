@@ -25,6 +25,7 @@ function show_help {
     echo "    -N | --nb_task NB TASK        On many parallel task"
     echo "    -g | --nb_gpu  NB GPU         On how many gpu this training should be done"
     echo "    -p | --partition PARTITION    On which partition the script will be executed"
+    echo "    -s | --script    SCRIPT       Which compatible should be executed"
     echo ""
     echo "Training parameters"
     echo "    --dataset         DATASET (default ubs8k)"
@@ -41,6 +42,10 @@ function show_help {
     echo "Available partition"
     echo "    GPUNodes"
     echo "    RTX6000Node"
+    echo ""
+    echo "Compatible standalone script"
+    echo "    ../co-training/co-training.py"
+    echo "    ../co-training/co-training_mse.py"
 }
 
 # default parameters
@@ -49,19 +54,20 @@ NODE=" "
 NB_TASK=1
 NB_GPU=1
 PARTITION="GPUNodes"
+SCRIPT="../co-training/co-training.py"
 
 # training parameters
-MODEL=cnn03
+MODEL=wideresnet28_2
 DATASET="ubs8k"
 RATIO=0.1
 EPOCH=300
 NB_CLS=10
-BATCH_SIZE=100
+BATCH_SIZE=300
 RESUME=0
 CROSSVAL=0
 LR=0.0005
 SEED=1234
-LCM=10
+LCM=1
 LDM=0.5
 WL=160
 
@@ -97,6 +103,7 @@ while :; do
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
         -g | --nb_gpu)    NB_GPU=$(parse_long $2); shift; shift;;
         -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
+        -s | --script) SCRIPT=$(parse_long $2); shift; shift;;
 
         -?*) echo "WARN: unknown option" $1 >&2
     esac
@@ -129,7 +136,7 @@ $NODELINE
 # container=/logiciels/containerCollections/CUDA10/pytorch.sif
 container=/users/samova/lcances/container/pytorch-dev.sif
 python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
-script=../co-training/co-training.py
+script=$SCRIPT
 
 # prepare cross validation parameters
 # ---- default, no crossvalidation
