@@ -54,12 +54,15 @@ def load_dataset(dataset: str, framework: str, **kwargs):
 
 
 def load_helper(dataset: str, framework: str, mapper: dict, **kwargs):
-    if dataset not in mapper.keys():
+    _dataset = dataset.lower()
+    _framework = framework.lower()
+
+    if _dataset not in mapper.keys():
         available_dataset = "{" + " | ".join(list(mapper.keys())) + "}"
-        raise ValueError(f"dataset {dataset} is not available. Available dataset are: {available_dataset}")
+        raise ValueError(f"dataset {_dataset} is not available. Available dataset are: {available_dataset}")
 
-    if framework not in mapper[dataset].keys():
-        available_framework = "{" + " | ".join(list(mapper[dataset].keys()))
-        raise ValueError(f"framework {framework} is not available. Available framework are: {available_framework}")
+    if _framework not in mapper[_dataset].keys():
+        available_framework = "{" + " | ".join(list(mapper[_dataset].keys()))
+        raise ValueError(f"framework {_framework} is not available. Available framework are: {available_framework}")
 
-    return mapper[dataset][framework](**kwargs)
+    return mapper[_dataset][_framework](**kwargs)
