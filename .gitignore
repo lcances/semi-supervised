@@ -1,0 +1,13 @@
+.ipynb_checkpoints/
+__pycache__/
+.idea
+.vs
+.vscode
+*.swp
+*.swo
+.*.db
+.*.db-shm
+.*.db-wal
+DCT.egg-info/
+venv.yml
+model_save/
