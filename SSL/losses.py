@@ -35,6 +35,10 @@ def loss_cot(U_p1, U_p2):
     loss3 = -torch.sum(loss3)
 
     return (loss1 - 0.5 * (loss2 + loss3)) / U_batch_size
+    
+
+def JensenShanon(logits_1, logits_2):
+    return loss_cot(logits_1, logits_2)
 
 
 def loss_diff(logit_S1, logit_S2, perturbed_logit_S1, perturbed_logit_S2,

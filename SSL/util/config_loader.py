@@ -8,13 +8,23 @@ This add every element of the configuration file into a NameSpace the same way a
 It allow the usage of both argparse and configuration files.
 """
 import yaml
+from argparse import Namespace
 
-class NameSpace:
-    def __init__(**kwargs):
-        self.__dict__.update(kwargs)
 
 def load_config(path: str):
     with open(path) as yml_file:
         config = yaml.safe_load(yml_file)
 
-    return NameSpace(**config)
+    return Namespace(**config)
+
+
+def overide_config(args_form_argparse, args_from_config):
+    _args_from_config = vars(args_from_config)
+    _args_form_argparse = vars(args_form_argparse)
+
+    # Override configuration arguments by the cmdline parameters
+    for key, value in _args_form_argparse.items():
+        if value is not None:
+            _args_from_config[key] = value
+
+    return Namespace(**_args_from_config)
