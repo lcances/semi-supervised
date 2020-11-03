@@ -27,7 +27,8 @@ function show_help {
     echo "    --warmup_lenght WL            Warmup lenght"
 
     echo "    --lambda_ccost_max LCCM       Lambda Consistency Const Max"
-    echo "    --ema_alpha ALPHA             Exponentiel Moving average windows size"
+    echo "    --ema_alpha        ALPHA      Exponentiel Moving average windows size"
+    echo "    --teacher_noise    NOISE      Noise for teacher input"
     echo ""
     echo "Available partition"
     echo "    GPUNodes"
@@ -61,6 +62,7 @@ LCM=1
 LDM=0.5
 LCCM=1
 ALPHA=0.999
+NOISE=2
 WL=160
 
 # Parse the first two parameters
@@ -91,6 +93,7 @@ while :; do
 
         --lambda_ccost_max) LCCM=$(parse_long $2); shift; shift;;
         --ema_alpha)        ALPHA=$(parse_long $2); shift; shift;;
+        --teacher_noise)    NOISE=$(parse_long $2); shift; shift;;
 
         -n | --node)      NODE=$(parse_long $2); shift; shift;;
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
@@ -153,6 +156,7 @@ common_args="\${common_args} --warmup_length ${WL}"
 # Mean Teacher specific parameters
 common_args="\{common_args} --lambda_ccost_max ${LCCM}"
 common_args="\{common_args} --ema_alpha ${ALPHA}"
+common_args="\{common_args} --teacher_noise ${NOISE}"
 
 # -------- resume training --------
 if [ $RESUME -eq 1 ]; then

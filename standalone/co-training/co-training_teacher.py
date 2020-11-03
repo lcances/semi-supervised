@@ -49,6 +49,7 @@ group_h.add_argument("--lambda_ccost_max", default=1, type=float)
 group_h.add_argument("--warmup_length", default=160, type=int)
 group_h.add_argument("--epsilon", default=0.02, type=float)
 group_h.add_argument("--ema_alpha", default=0.999, type=float)
+group_h.add_argument("--teacher_noise", default=2, type=float)
 
 group_l = parser.add_argument_group("Logs")
 group_l.add_argument("--checkpoint_root", default="../../model_save/", type=str)
@@ -213,8 +214,10 @@ class Noisify(nn.Module):
         return x + (torch.rand(x.shape).cuda() * self.noise_level)
 
 
-noise_fn = Noisify(noise_level=10)
-noise_fn = noise_fn.cuda()
+noise_fn = lambda x: x
+if args.teacher_noise != 0:
+    noise_fn = Noisify(noise_level=args.teacher_noise)
+    noise_fn = noise_fn.cuda()
 
 # # Training functions
 UNDERLINE_SEQ = "\033[1;4m"
@@ -432,6 +435,7 @@ def test(epoch, msg=""):
 
     # call checkpoint
     checkpoint.step(acc_1.mean)
+
 
 # can resume training
 if args.resume:
