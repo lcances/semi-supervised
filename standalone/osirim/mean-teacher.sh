@@ -1,16 +1,5 @@
-# ___________________________________________________________________________________ #
-die() {
-    printf '%s\n' "$1" >& 2
-    exit 1
-}
-
-parse_long() {
-    if [ "$1" ]; then
-        echo $1
-    else
-        die "missing argument value"
-    fi
-}
+source ../bash_scripts/parse_option.sh
+source ../bash_scripts/cross_validation.sh
 
 function show_help {
     echo "usage:  $BASH_SOURCE dataset model [-r | --ratio] [training options]"
@@ -36,6 +25,8 @@ function show_help {
     echo "    --alpha              ALPHA value for the exponential moving average"
     echo "    --warmup_length      WL The length of the warmup"
     echo "    --noise              NOISE Add noise to the teacher input"
+    echo "    --ccost_softmax      SOFTMAX Uses a softmax on the teacher logits (store false)"
+    echo "    --ccost_method       CC_METHOD Uses JS or MSE for consistency cost"
     echo "    --tensorboard_sufix  SUFIX for the tensorboard name, more precision"
     echo ""
     echo "Osirim related parameters"
@@ -70,7 +61,9 @@ SEED=1234
 LCM=2
 ALPHA=0.999
 WL=100
-NOISE=""
+NOISE=0
+SOFTMAX=1
+CC_METHOD=mse
 SUFIX="_"
 
 
@@ -88,6 +81,7 @@ while :; do
     case $1 in
         -R | --resume)        RESUME=1; shift;;
         -C | --crossval)      CROSSVAL=1; shift;;
+        --ccost_softmax)      SOFTMAX=0; shift;;
 
         --dataset)            DATASET=$(parse_long $2); shift; shift;;
         --model)              MODEL=$(parse_long $2); shift; shift;;
@@ -100,8 +94,10 @@ while :; do
 
         --lambda_ccost_max)   LCM=$(parse_long $2); shift; shift;;
         --alpha)              ALPHA=$(parse_long $2); shift; shift;;
+        --noise)              NOISE=$(parse_long $2); shift; shift;;
+        --ccost_method)       CC_METHOD=$(parse_long $2); shift; shift;;
         --warmup_length)      WL=$(parse_long $2); shift; shift;;
-	--noise)              NOISE="--noise"; shift;;
+	    --noise)              NOISE="--noise"; shift;;
 
         -n | --node)      NODE=$(parse_long $2); shift; shift;;
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
@@ -143,27 +139,7 @@ python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
 script=../student-teacher/student-teacher.py
 
 # prepare cross validation parameters
-# ---- default, no crossvalidation
-if [ "$DATASET" = "ubs8k" ]; then
-    folds=("-t 1 2 3 4 5 6 7 8 9 -v 10")
-elif [ "$DATASET" = "esc10" ] || [ "$DATASET" = "esc50" ]; then
-    folds=("-t 1 2 3 4 -v 5")
-elif [ "$DATASET" = "SpeechCommand" ]; then
-    folds=("-t 1 -v 2") # fake array to just ensure at least one run. Not used by the dataset anyway
-fi
-
-# if crossvalidation is activated
-if [ $CROSSVAL -eq 1 ]; then
-    if [ "$DATASET" = "ubs8k" ]; then
-        mvar=\$(python -c "import DCT.util.utils as u; u.create_bash_crossvalidation(10)")
-        IFS=";" read -a folds <<< \$mvar
-
-    elif [ "$DATASET" = "esc10" ] || [ "$DATASET" = "esc50" ]; then
-        mvar=\$(python -c "import DCT.util.utils as u; u.create_bash_crossvalidation(5)")
-        IFS=";" read -a folds <<< \$mvar
-    fi
-fi
-
+folds=\$(cross_validation $DATASET)
 
 # -------- dataset & model ------
 common_args="\${common_args} --dataset ${DATASET}"
@@ -179,11 +155,14 @@ common_args="\${common_args} --seed ${SEED}"
 common_args="\${common_args} --lambda_cost_max ${LCM}"
 common_args="\${common_args} --warmup_length ${WL}"
 common_args="\${common_args} --ema_alpha ${ALPHA}"
-common_args="\${common_args} ${NOISE}"
+common_args="\${common_args} --teacher_noise ${NOISE}"
+common_args="\${common_args} --ccost_method ${CC_METHOD}"
+if [ $SOFTMAX -eq 1 ]; then
+    common_args="\${common_args} --ccost_softmax ${SOFTMAX}"
+fi
 
 # -------- resume training --------
 if [ $RESUME -eq 1 ]; then
-    echo "$RESUME"
     common_args="\${common_args} --resume"
 fi
 

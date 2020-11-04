@@ -17,6 +17,7 @@ model_save
 datasets
 logs/
 standalone/osirim/logs/
+*.zip
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
