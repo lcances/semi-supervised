@@ -120,9 +120,9 @@ for p in teacher.parameters():
 # tensorboard
 tensorboard_title = f"{args.model}/{args.supervised_ratio}S/" \
                     f"{get_datetime()}_{model_func.__name__}" \
-                    f"_teacher_{args.ema_alpha}a"
+                    f"_teacher_{args.ema_alpha}a_{args.teacher_noise}n"
 checkpoint_title = f"{args.model}/{args.supervised_ratio}S/" \
-                   f"{args.model}_teacher_{args.ema_alpha}a"
+                   f"{args.model}_teacher_{args.ema_alpha}a_{args.teacher_noise}n"
 
 tensorboard = mSummaryWriter(log_dir=f"{tensorboard_path}/{tensorboard_title}", comment=model_func.__name__)
 print(os.path.join(tensorboard_path, tensorboard_title))
@@ -443,7 +443,7 @@ if args.resume:
 start_epoch = checkpoint.epoch_counter
 
 print(header)
-for epoch in range(0, args.nb_epoch):
+for epoch in range(start_epoch, args.nb_epoch):
     total_loss = train(epoch)
 
     if np.isnan(total_loss):
@@ -463,7 +463,7 @@ for key, value in args.__dict__.items():
 final_metrics = {
     "max_acc_1": maximum_tracker.max["acc_1"],
     "max_acc_2": maximum_tracker.max["acc_2"],
-    "max_acc_t": maximum_tracker.mac["acc_t"]
+    "max_acc_t": maximum_tracker.max["acc_t"]
 }
 
 tensorboard.flush()
