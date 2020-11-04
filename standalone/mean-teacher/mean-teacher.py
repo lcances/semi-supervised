@@ -48,7 +48,7 @@ group_s.add_argument("--ema_alpha", default=0.999, type=float)
 group_s.add_argument("--warmup_length", default=50, type=int)
 group_s.add_argument("--lambda_cost_max", default=1, type=float)
 group_s.add_argument("--teacher_noise", default=0, type=float)
-group_s.add_argument("--ccost_softmax", action="store_true", default=True)
+group_s.add_argument("--ccost_softmax", action="store_false", default=True)
 group_s.add_argument("--ccost_method", type=str, default="mse")
 
 group_l = parser.add_argument_group("Logs")
@@ -256,22 +256,23 @@ def train(epoch):
         y_s, y_u = y_s.cuda(), y_u.cuda()
 
         # Predictions
-        student_s_logits = student(x_s)        
-        student_u_logits = student(x_u)
-        teacher_s_logits = teacher(noise_fn(x_s))
-        teacher_u_logits = teacher(noise_fn(x_u))
+        with autocast():
+            student_s_logits = student(x_s)        
+            student_u_logits = student(x_u)
+            teacher_s_logits = teacher(noise_fn(x_s))
+            teacher_u_logits = teacher(noise_fn(x_u))
 
-        # Calculate supervised loss (only student on S)
-        loss = loss_ce(student_s_logits, y_s)
+            # Calculate supervised loss (only student on S)
+            loss = loss_ce(student_s_logits, y_s)
 
-        # Calculate consistency cost (mse(student(x), teacher(x))) x is S + U
-        student_logits = torch.cat((student_s_logits, student_u_logits), dim=0)
-        teacher_logits = torch.cat((teacher_s_logits, teacher_u_logits), dim=0)
-        ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))
+            # Calculate consistency cost (mse(student(x), teacher(x))) x is S + U
+            student_logits = torch.cat((student_s_logits, student_u_logits), dim=0)
+            teacher_logits = torch.cat((teacher_s_logits, teacher_u_logits), dim=0)
+            ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))
 
-        total_loss = loss + lambda_cost() * ccost
+            total_loss = loss + lambda_cost() * ccost
 
-        optimizer.zero_grad()
+        for p in student.parameters(): p.grad = None
         total_loss.backward()
         optimizer.step()
 
@@ -333,13 +334,14 @@ def val(epoch):
             y = y.cuda()
 
             # Predictions
-            student_logits = student(X)        
-            teacher_logits = teacher(X)
+            with autocast():
+                student_logits = student(X)        
+                teacher_logits = teacher(X)
 
-            # Calculate supervised loss (only student on S)
-            loss = loss_ce(student_logits, y)
-            _teacher_loss = loss_ce(teacher_logits, y) # for metrics only
-            ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))
+                # Calculate supervised loss (only student on S)
+                loss = loss_ce(student_logits, y)
+                _teacher_loss = loss_ce(teacher_logits, y) # for metrics only
+                ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))
 
             # Compute the metrics
             y_one_hot = F.one_hot(y, num_classes=args.num_classes)
@@ -403,7 +405,7 @@ for e in range(start_epoch, args.nb_epoch):
 hparams = {}
 for key, value in args.__dict__.items():
     hparams[key] = str(value)
-    
+
 final_metrics = {
     "max_student_acc": maximum_tracker.max["student_acc"],
     "max_teacher_acc": maximum_tracker.max["teacher_acc"],
