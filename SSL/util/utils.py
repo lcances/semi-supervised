@@ -1,13 +1,12 @@
-from multiprocessing import Process, Manager
 import logging
 import datetime
 import random
 import numpy as np
 import torch
-import logging
 import time
 from collections import Iterable, Sized
-import torch.distributed as dist
+from zipfile import ZipFile, ZIP_DEFLATED 
+import os
 
 # TODO write q timer decorator that deppend on the logging level
 
@@ -167,3 +166,40 @@ def create_bash_crossvalidation(nb_fold: int = 10):
 
     print(";".join(cross_validation))
 
+
+def save_source_as_img(sourcepath: str):
+    # Create a zip file of the current source code
+
+    with ZipFile(sourcepath + ".zip", "w", compression=ZIP_DEFLATED, compresslevel=9) as myzip:
+        myzip.write(sourcepath)
+
+    # Read the just created zip file and store it into
+    # a uint8 numpy array
+    with open(sourcepath + ".zip", "rb") as myzip:
+        zip_bin = myzip.read()
+
+    zip_bin_n = np.array(list(map(int, zip_bin)), dtype=np.uint8)
+
+    # Convert it into a 2d matrix
+    desired_dimension = 500
+    missing = desired_dimension - (zip_bin_n.size % desired_dimension)
+    zip_bin_p = np.concatenate((zip_bin_n, np.array([0]*missing, dtype=np.uint8)))
+    zip_bin_i = np.asarray(zip_bin_p).reshape((desired_dimension, zip_bin_p.size // desired_dimension))
+
+    # Cleaning (remove zip file)
+    os.remove(sourcepath + ".zip")
+
+    return zip_bin_i, missing
+
+
+
+# from PIL import Image
+# 
+# im = Image.open("tmp-232.png")
+# source_bin = numpy.asarray(im, dtype=numpy.uint8)
+# source_bin = source_bin[:, :, 0]
+# 
+# source_bin = source_bin.flatten()[:-232]
+# 
+# with open("student-teacher.ipynb.zip.bak", "wb") as mynewzip:
+#     mynewzip.write(source_bin)
