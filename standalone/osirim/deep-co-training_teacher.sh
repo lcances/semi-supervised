@@ -1,5 +1,6 @@
-source ../bash_scripts/parse_option.sh
-source ../bash_scripts/cross_validation.sh
+source bash_scripts/parse_option.sh
+source bash_scripts/cross_validation.sh
+
 function show_help {
     echo "usage:  $BASH_SOURCE dataset model [-n | --node] [-N | --nb_task] \
                   [-g | --nb_gpu] [-p | --partition]"
@@ -63,6 +64,8 @@ LDM=0.5
 LCCM=1
 ALPHA=0.999
 NOISE=2
+SOFTMAX=1
+CC_METHOD=mse
 WL=160
 
 # Parse the first two parameters
@@ -79,6 +82,7 @@ while :; do
     case $1 in
         -R | --resume)      RESUME=1; shift;;
         -C | --crossval)    CROSSVAL=1; shift;;
+        --ccost_softmax)    SOFTMAX=0; shift;;
 
         --ratio)            RATIO=$(parse_long $2); shift; shift;;
         --epoch)            EPOCH=$(parse_long $2); shift; shift;;
@@ -94,6 +98,7 @@ while :; do
         --lambda_ccost_max) LCCM=$(parse_long $2); shift; shift;;
         --ema_alpha)        ALPHA=$(parse_long $2); shift; shift;;
         --teacher_noise)    NOISE=$(parse_long $2); shift; shift;;
+        --ccost_method)     CC_METHOD=$(parse_long $2); shift; shift;;
 
         -n | --node)      NODE=$(parse_long $2); shift; shift;;
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
@@ -135,7 +140,8 @@ python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
 script=$SCRIPT
 
 # prepare cross validation parameters
-folds=\$(cross_validation $DATASET)
+folds_str="$(cross_validation $DATASET $CROSSVAL)"
+IFS=";" read -a folds <<< \$folds_str
 
 # -------- dataset & model ------
 common_args="\${common_args} --dataset ${DATASET}"
@@ -157,6 +163,10 @@ common_args="\${common_args} --warmup_length ${WL}"
 common_args="\{common_args} --lambda_ccost_max ${LCCM}"
 common_args="\{common_args} --ema_alpha ${ALPHA}"
 common_args="\{common_args} --teacher_noise ${NOISE}"
+common_args="\${common_args} --ccost_method ${CC_METHOD}"
+if [ $SOFTMAX -eq 1 ]; then
+    common_args="\${common_args} --ccost_softmax ${SOFTMAX}"
+fi
 
 # -------- resume training --------
 if [ $RESUME -eq 1 ]; then
