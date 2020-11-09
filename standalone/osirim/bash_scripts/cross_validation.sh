@@ -1,7 +1,9 @@
 #!/bin/bash
-DATASET = $1
 
 cross_validation() {
+    DATASET=$1
+    CROSSVAL=$2
+
     # prepare cross validation parameters
     # ---- default, no crossvalidation
     if [ "$DATASET" = "ubs8k" ]; then
@@ -24,5 +26,5 @@ cross_validation() {
         fi
     fi
 
-    echo $folds
+    echo $mvar
 }

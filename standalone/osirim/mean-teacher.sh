@@ -139,7 +139,7 @@ python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
 script=../student-teacher/student-teacher.py
 
 # prepare cross validation parameters
-folds=\$(cross_validation $DATASET)
+folds=\$(cross_validation $DATASET $CROSSVAL)
 
 # -------- dataset & model ------
 common_args="\${common_args} --dataset ${DATASET}"
