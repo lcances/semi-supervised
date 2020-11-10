@@ -11,7 +11,7 @@ import os
 # TODO write q timer decorator that deppend on the logging level
 
 
-class dotdict(dict):
+class DotDict(dict):
     """dot.notation access to dictionary attributes"""
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
