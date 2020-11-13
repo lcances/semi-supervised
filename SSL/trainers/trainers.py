@@ -189,6 +189,8 @@ class Trainer:
 
             self.tensorboard.flush()
 
+        self.test_fn()
+
         self.save_hparams(self.parameters)
 
     # =========================================================================
