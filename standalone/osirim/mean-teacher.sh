@@ -21,6 +21,7 @@ function show_help {
     echo "    --learning_rate      LR (default 0.001)"
     echo "    --batch_size         BATCH_SIZE (default 64)"
     echo "    --seed               SEED (default 1234)"
+    echo ""
     echo "    --lambda_ccost_max   LCM The consistency cost maximum value"
     echo "    --alpha              ALPHA value for the exponential moving average"
     echo "    --warmup_length      WL The length of the warmup"
@@ -139,7 +140,7 @@ python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
 script=../student-teacher/student-teacher.py
 
 # prepare cross validation parameters
-folds=\$(cross_validation $DATASET)
+folds=\$(cross_validation $DATASET $CROSSVAL)
 
 # -------- dataset & model ------
 common_args="\${common_args} --dataset ${DATASET}"

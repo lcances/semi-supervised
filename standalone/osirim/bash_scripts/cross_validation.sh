@@ -7,11 +7,11 @@ cross_validation() {
     # prepare cross validation parameters
     # ---- default, no crossvalidation
     if [ "$DATASET" = "ubs8k" ]; then
-        folds=("-t 1 2 3 4 5 6 7 8 9 -v 10")
+        mvar="-t 1 2 3 4 5 6 7 8 9 -v 10"
     elif [ "$DATASET" = "esc10" ] || [ "$DATASET" = "esc50" ]; then
-        folds=("-t 1 2 3 4 -v 5")
+        mvar="-t 1 2 3 4 -v 5"
     elif [ "$DATASET" = "SpeechCommand" ]; then
-        folds=("-t 1 -v 2") # fake array to ensure exactly one run. Nut used by SpeechCommand anyway"
+        mvar="-t 1 -v 2" # fake array to ensure exactly one run. Nut used by SpeechCommand anyway"
     fi
 
     # if crossvalidation is activated
@@ -26,5 +26,5 @@ cross_validation() {
         fi
     fi
 
-    echo $folds
+    echo $mvar
 }

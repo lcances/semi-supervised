@@ -41,6 +41,26 @@ def JensenShanon(logits_1, logits_2):
     return loss_cot(logits_1, logits_2)
 
 
+def js_from_softmax(p1, p2):
+    U_batch_size = p1.size()[0]
+    eps=1e-8
+
+    a1 = 0.5 * (p1 + p2)
+    a1 = torch.clamp(a1, min=eps)
+    
+    loss1 = a1 * torch.log(a1)
+    loss1 = -torch.sum(loss1)
+
+    loss2 = p1 * torch.log(p1)
+    loss2 = -torch.sum(loss2)
+
+    loss3 = p2 * torch.log(p2)
+    loss3 = -torch.sum(loss3)
+
+    return (loss1 - 0.5 * (loss2 + loss3)) / U_batch_size
+    
+
+
 def loss_diff(logit_S1, logit_S2, perturbed_logit_S1, perturbed_logit_S2,
               logit_U1, logit_U2, perturbed_logit_U1, perturbed_logit_U2):
     S = nn.Softmax(dim=1)
