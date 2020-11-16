@@ -1,6 +1,4 @@
 from typing import Union
-from torch.nn import parameter
-from SSL.util.checkpoint import CheckPoint
 from SSL.ramps import Warmup, sigmoid_rampup
 from torchsummary.torchsummary import summary
 from SSL.util.model_loader import load_model
@@ -10,7 +8,7 @@ from torch.cuda.amp import autocast
 from torch.cuda.memory import empty_cache
 import torch.nn as nn
 import torch.nn.functional as F
-from SSL.util.utils import DotDict, get_datetime, save_source_as_img
+from SSL.util.utils import DotDict
 from SSL.trainers.trainers import Trainer
 from SSL.losses import JensenShanon
 from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage
@@ -53,7 +51,7 @@ class MeanTeacherTrainer(Trainer):
         self.student = self.student.cuda()
         self.teacher = self.teacher.cuda()
 
-        s = summary(self.student, self.input_shape)
+        summary(self.student, self.input_shape)
 
     def set_printing_form(self):
         UNDERLINE_SEQ = "\033[1;4m"
