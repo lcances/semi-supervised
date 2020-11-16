@@ -10,18 +10,16 @@ from torch.cuda.amp import autocast
 import torchvision.transforms as transforms
 # from torch.utils.tensorboard import SummaryWriter
 from advertorch.attacks import GradientSignAttack
-from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage, Ratio
+from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
-from SSL.util.utils import reset_seed, get_datetime, track_maximum, save_source_as_img
+from SSL.util.utils import reset_seed, get_datetime, track_maximum
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser
 from SSL.ramps import Warmup, sigmoid_rampup
 from SSL.losses import loss_cot, loss_diff, loss_sup, JensenShanon
-
-# Arguments
-
-# %%
 import argparse
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--from_config", default="", type=str)
 parser.add_argument("-d", "--dataset_root", default="../../datasets/", type=str)
@@ -47,12 +45,13 @@ group_h = parser.add_argument_group('hyperparameters')
 group_h.add_argument("--lambda_cot_max", default=1, type=float)
 group_h.add_argument("--lambda_diff_max", default=0.5, type=float)
 group_h.add_argument("--warmup_length", default=160, type=int)
+group_h.add_argument("--fusion_method", default="harmonic_mean")
 group_h.add_argument("--epsilon", default=0.02, type=float)
 
 group_h.add_argument("--ema_alpha", default=0.999, type=float)
-group_h.add_argument("--lambda_ccost_max", default=1, type=float)
 group_h.add_argument("--teacher_noise", default=0, type=float)
-group_h.add_argument("--ccost_method", default="js", type=str)
+group_h.add_argument("--lambda_ccost_max", default=1, type=float)
+group_h.add_argument("--ccost_method", default="mse", type=str)
 group_h.add_argument("--ccost_softmax", action="store_false", default=True)
 
 group_l = parser.add_argument_group("Logs")
@@ -62,14 +61,15 @@ group_l.add_argument("--checkpoint_path", default="deep-co-training", type=str)
 group_l.add_argument("--tensorboard_path", default="deep-co-training", type=str)
 group_l.add_argument("--tensorboard_sufix", default="", type=str)
 
-args = parser.parse_args()
+args = parser.parse_args("")
 
 tensorboard_path = os.path.join(args.tensorboard_root, args.dataset, args.tensorboard_path)
 checkpoint_path = os.path.join(args.checkpoint_root, args.dataset, args.checkpoint_path)
 
-# =============================================================================
-#   VERIFICATION
-# =============================================================================
+# %% [markdown]
+# ## Basic verification
+
+# %%
 available_datasets = ["esc10", "ubs8k", "speechcommand"]
 available_models = ["cnn03", "wideresnet28_2", "wideresnet28_4", "wideresnet28_8"]
 available_ccost_method = ["mse", "js"]
@@ -78,19 +78,24 @@ assert args.dataset in available_datasets
 assert args.model in available_models
 assert args.ccost_method in available_ccost_method
 
-# =============================================================================
-#   VERIFICATION, DATASET LOAD, MODEL
-# =============================================================================
+# %% [markdown]
 # # Initialization
+
+# %%
 reset_seed(args.seed)
 
+# %% [markdown]
 # # Prepare the dataset
+
+# %%
 train_transform, val_transform = load_preprocesser(args.dataset, "dct")
 
+
+# %%
 manager, train_loader, val_loader = load_dataset(
     args.dataset,
     "dct",
-
+    
     dataset_root=args.dataset_root,
     supervised_ratio=args.supervised_ratio,
     batch_size=args.batch_size,
@@ -103,13 +108,19 @@ manager, train_loader, val_loader = load_dataset(
     num_workers=2,
     pin_memory=True,
 
-    verbose=2
+    verbose=1
 )
 
-# Prepare models
-torch.cuda.empty_cache()
 
+# %%
 input_shape = train_loader._iterables[0].dataset[0][0].shape
+input_shape
+
+# %% [markdown]
+# # Models
+
+# %%
+torch.cuda.empty_cache()
 model_func = load_model(args.dataset, args.model)
 
 commun_args = dict(
@@ -139,27 +150,33 @@ from torchsummary import summary
 
 s = summary(m1, tuple(input_shape))
 
-# =============================================================================
-#   TRAINING PREPARATION
-# =============================================================================
+# %% [markdown]
+# # training parameters
+
+# %%
 # tensorboard
-title_element = (args.model, args.supervised_ratio, get_datetime(),
-                 model_func.__name__, args.ccost_method.upper(),
-                 args.ccost_softmax, args.teacher_noise)
+tensorboard_title = f"{args.model}/{args.supervised_ratio}S/"                     f"{get_datetime()}_{model_func.__name__}_teacher_"                     f"{args.fusion_method}-fusion_{args.ema_alpha}a_{args.teacher_noise}n"
+checkpoint_title = f"{args.model}/{args.supervised_ratio}S/"                    f"{args.model}_teacher_"                    f"{args.fusion_method}-fusion_{args.ema_alpha}a_{args.teacher_noise}n"
 
-tensorboard_title = "%s/%sS/%s_%s_%s_%s-softmax_%s-n" % title_element
-checkpoint_title = "%s/%sS/%s_%s_%s_%s-softmax_%s-n" % title_element
-
-tensorboard = mSummaryWriter(log_dir=f"{tensorboard_path}/{tensorboard_title}",
-                             comment=model_func.__name__)
+tensorboard = mSummaryWriter(log_dir=f"{tensorboard_path}/{tensorboard_title}",comment=model_func.__name__)
 print(os.path.join(tensorboard_path, tensorboard_title))
 
-# Optimizer & callbacks
-optim_args = dict(learning_rate=args.learning_rate)
+# %% [markdown]
+# ## Optimizer & callbacks
+
+# %%
+optim_args = dict(
+    learning_rate=args.learning_rate,
+)
+
 optimizer = load_optimizer(args.dataset, "dct", model1=m1, model2=m2, **optim_args)
 callbacks = load_callbacks(args.dataset, "dct", optimizer=optimizer, nb_epoch=args.nb_epoch)
 
-# Adversarial generator
+# %% [markdown]
+# ## Adversarial generator
+
+# %%
+# adversarial generation
 adv_generator_1 = GradientSignAttack(
     m1, loss_fn=nn.CrossEntropyLoss(reduction="sum"),
     eps=args.epsilon, clip_min=-np.inf, clip_max=np.inf, targeted=False
@@ -171,6 +188,7 @@ adv_generator_2 = GradientSignAttack(
 )
 
 
+# %%
 # Losses
 # see losses.py
 if args.ccost_method == "mse":
@@ -185,33 +203,29 @@ lambda_ccost = Warmup(args.lambda_ccost_max, args.warmup_length, sigmoid_rampup)
 callbacks += [lambda_cot, lambda_diff, lambda_ccost]
 
 # checkpoints
-checkpoint = CheckPoint([m1, m2, teacher], optimizer, mode="max", name="%s/%s_m1.torch" % (checkpoint_path, checkpoint_title))
+checkpoint = CheckPoint([m1, m2, teacher], optimizer, mode="max", name="%s/%s.torch" % (checkpoint_path, checkpoint_title))
 
-
+# %% [markdown]
 # ## Metrics and hyperparameters
+
+# %%
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
 
 
-def reset_metrics():
-    for item in metrics_fn.values():
-        if isinstance(item, list):
-            for f in item:
-                f.reset()
-        else:
-            item.reset()
-
-
+# %%
+# metrics
 metrics_fn = dict(
     # ratio_s=[Ratio(), Ratio()],
     # ratio_u=[Ratio(), Ratio()],
     acc_s=[CategoricalAccuracy(), CategoricalAccuracy()],
     acc_u=[CategoricalAccuracy(), CategoricalAccuracy()],
     acc_t=[CategoricalAccuracy(), CategoricalAccuracy()],
+    acc_f=CategoricalAccuracy(),
     f1_s=[FScore(), FScore()],
     f1_u=[FScore(), FScore()],
-
+    
     avg_total=ContinueAverage(),
     avg_sup=ContinueAverage(),
     avg_cot=ContinueAverage(),
@@ -225,9 +239,21 @@ softmax_fn = lambda x: x
 if args.ccost_softmax:
     softmax_fn = nn.Softmax(dim=1)
 
+
+def reset_metrics():
+    for item in metrics_fn.values():
+        if isinstance(item, list):
+            for f in item:
+                f.reset()
+        else:
+            item.reset()
+
 reset_metrics()
 
-# Training functions
+# %% [markdown]
+# # Training functions
+
+# %%
 UNDERLINE_SEQ = "\033[1;4m"
 RESET_SEQ = "\033[0m"
 
@@ -239,28 +265,54 @@ header = header_form.format(
 )
 
 train_form = value_form
-val_form = UNDERLINE_SEQ + value_form + RESET_SEQ
+val_form = train_form #UNDERLINE_SEQ + value_form + RESET_SEQ
 
 print(header)
 
 
+# %%
 def update_teacher_model(student_model, teacher_model, alpha, epoch):
     # Use the true average until the exponential average is more correct
     alpha = min(1 - 1 / (epoch + 1), alpha)
-
+    
     for param, ema_param in zip(student_model.parameters(), teacher_model.parameters()):
         ema_param.data.mul_(alpha).add_(param.data,  alpha = 1-alpha)
-
 
 noise_fn = lambda x: x
 if args.teacher_noise != 0:
     n_db = args.teacher_noise
     noise_fn = transforms.Lambda(lambda x: x + (torch.rand(x.shape).cuda() * n_db + n_db))
 
+def arithmetric_avg(a, b):
+    return (a + b) / 2
 
+def geometric_avg(a, b):
+    # in log space to avoid overflow
+    log_a, log_b = torch.log(a), torch.log(b)
+    return torch.exp((log_a + log_b) / 2)
+
+def harmonic_avg(a, b):
+    return 2 / (1/a + 1/b)
+
+def get_fusion_method(method: str):
+    if method == "m1":
+        return lambda x, y: x
+    elif method == "m2":
+        return lambda x, y: y
+    elif method == "arithmetic_mean":
+        return arithmetric_avg
+    elif method == "geometric_mean":
+        return geometric_avg
+    elif method == "harmonic_mean":
+        return harmonic_avg
+    else:
+        raise ValueError("method %s doesn't exist for fusion")
+
+fusion_fn = get_fusion_method(args.fusion_method)
+
+
+# %%
 nb_batch = len(train_loader)
-
-
 def train(epoch):
     start_time = time.time()
     print("")
@@ -314,7 +366,7 @@ def train(epoch):
 
         # ======== calculate the differents loss ========
         # zero the parameter gradients ----
-        for p in m1.parameters(): p.grad = None  # zero grad
+        for p in m1.parameters(): p.grad = None # zero grad
         for p in m2.parameters(): p.grad = None
 
         # losses ----
@@ -328,9 +380,13 @@ def train(epoch):
                 logits_u1, logits_u2, adv_logits_u1, adv_logits_u2)
 
             # Teacher consistency cost
-            # student logits = mean(m1(x_u) + m2(x_u))
-            logits_student_u = (logits_u1 + logits_u2) / 2
-            l_teacher = consistency_cost(softmax_fn(logits_student_u), softmax_fn(logits_tu))
+            student_u = fusion_fn(softmax_fn(logits_u1), softmax_fn(logits_u2))
+
+            # logits_student_u = logits_u1
+            l_teacher = consistency_cost(
+                student_u, # softmax_fn is apply before during the fusion
+                softmax_fn(logits_tu)
+            )
 
             total_loss = l_sup + lambda_cot() * l_cot + lambda_diff() * l_diff + lambda_ccost() * l_teacher
 
@@ -339,7 +395,7 @@ def train(epoch):
 
         # ======== Calc the metrics ========
         with torch.set_grad_enabled(False):
-            # predict ligits teacher on S1, for monitoring purpose
+            # predict logits teacher on S1, for monitoring purpose
             logits_ts = teacher(x_s1)
 
             # Update teacher
@@ -348,6 +404,7 @@ def train(epoch):
             # accuracies ----
             pred_s1 = torch.argmax(logits_s1, dim=1)
             pred_s2 = torch.argmax(logits_s2, dim=1)
+            pred_t1 = torch.argmax(logits_ts, dim=1)
             pred_tu = torch.argmax(logits_tu, dim=1)
             pred_ts = torch.argmax(logits_ts, dim=1)
 
@@ -439,10 +496,15 @@ def test(epoch, msg = ""):
             pred_1 = torch.argmax(logits_1, dim=1)
             pred_2 = torch.argmax(logits_2, dim=1)
             pred_t = torch.argmax(logits_t, dim=1)
+            pred_f12 = torch.argmax(
+                fusion_fn(
+                    softmax_fn(logits_1),
+                    softmax_fn(logits_2)), dim=1)
 
             acc_1 = metrics_fn["acc_s"][0](pred_1, y)
             acc_2 = metrics_fn["acc_s"][1](pred_2, y)
             acc_t = metrics_fn["acc_t"][0](pred_t, y)
+            acc_f12 = metrics_fn["acc_f"](pred_f12, y)
 
             avg_sup = metrics_fn["avg_sup"](l_sup.item())
 
@@ -454,15 +516,17 @@ def test(epoch, msg = ""):
                 "", avg_sup.mean, 0.0, 0.0, 0.0, avg_sup.mean,
                 "", acc_1.mean, 0.0, acc_t.mean, 0.0,
                 time.time() - start_time
-            ), end="\r")
+            ), end="\n")
 
     tensorboard.add_scalar("val/acc_1", acc_1.mean, epoch)
     tensorboard.add_scalar("val/acc_2", acc_2.mean, epoch)
     tensorboard.add_scalar("val/acc_t", acc_t.mean, epoch)
+    tensorboard.add_scalar("val/acc_f12", acc_f12.mean, epoch)
         
     tensorboard.add_scalar("max/acc_1", maximum_tracker("acc_1", acc_1.mean), epoch )
     tensorboard.add_scalar("max/acc_2", maximum_tracker("acc_2", acc_2.mean), epoch )
     tensorboard.add_scalar("max/acc_t", maximum_tracker("acc_t", acc_t.mean), epoch )
+    tensorboard.add_scalar("max/acc_f12", maximum_tracker("acc_f12", acc_f12.mean), epoch )
     
     tensorboard.add_scalar("detail_hyperparameters/lambda_cot", lambda_cot(), epoch)
     tensorboard.add_scalar("detail_hyperparameters/lambda_diff", lambda_diff(), epoch)
@@ -478,6 +542,10 @@ def test(epoch, msg = ""):
 
 
 # %%
+args.resume = False
+
+
+# %%
 # can resume training
 if args.resume:
     checkpoint.load_last()
@@ -486,11 +554,11 @@ start_epoch = checkpoint.epoch_counter
 print(header)
 for epoch in range(start_epoch, args.nb_epoch):
     total_loss = train(epoch)
-
+    
     if np.isnan(total_loss):
         print("Losses are NaN, stoping the training here")
         break
-
+        
     test(epoch)
 
     tensorboard.flush()
@@ -505,13 +573,16 @@ final_metrics = {
     "max_acc_1": maximum_tracker.max["acc_1"],
     "max_acc_2": maximum_tracker.max["acc_2"],
     "max_acc_t": maximum_tracker.max["acc_t"],
+    "max_acc_f12": maximum_tracker.max["acc_f12"],
 }
 tensorboard.add_hparams(hparams, final_metrics)
 tensorboard.flush()
 
-source_code_path = __file__
-source_code_img, padding_size = save_source_as_img(source_code_path)
-tensorboard.add_image("source_code_path___%s" % padding_size, source_code_img , 0, dataformats="HW")
+# source_code_path = "co-training_teacher_m1.ipynb"
+# source_code_img, padding_size = save_source_as_img(source_code_path)
+# tensorboard.add_image("source_code_path___%s" % padding_size, source_code_img , 0, dataformats="HW")
 
 tensorboard.flush()
 tensorboard.close()
+
+

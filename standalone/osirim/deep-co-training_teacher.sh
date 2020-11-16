@@ -23,21 +23,16 @@ function show_help {
     echo "    --batch_size      BATCH_SIZE (default 64)"
     echo "    --seed            SEED (default 1234)"
     
-    echo "    --lambda_cot_max LCM          Lambda cot max"
-    echo "    --lambda_diff_max LDM         Lambda diff max"
-    echo "    --warmup_lenght WL            Warmup lenght"
-
-    echo "    --lambda_ccost_max LCCM       Lambda Consistency Const Max"
-    echo "    --ema_alpha        ALPHA      Exponentiel Moving average windows size"
-    echo "    --teacher_noise    NOISE      Noise for teacher input"
-    echo ""
-    echo "Available partition"
-    echo "    GPUNodes"
-    echo "    RTX6000Node"
-    echo ""
-    echo "Compatible standalone script"
-    echo "    ../co-training/co-training.py"
-    echo "    ../co-training/co-training_mse.py"
+    echo "DCT & MT parameters"
+    echo "    --lambda_cot_max   LCM Lambda cot max"
+    echo "    --lambda_diff_max  LDM Lambda diff max"
+    echo "    --warmup_lenght    WL Warmup lenght"
+    echo "    --lambda_ccost_max LCCM Lambda Consistency Const Max"
+    echo "    --ema_alpha        ALPHA Exponentiel Moving average windows size"
+    echo "    --teacher_noise    NOISE Noise for teacher input"
+    echo "    --ccost_softmax    SOFTMAX Uses a softmax on the teacher logits (store false)"
+    echo "    --ccost_method     CC_METHOD Uses JS or MSE for consistency cost"
+    echo "    --fusion_method    FUSION Which fusion method must be used"
 }
 
 # default parameters
@@ -46,7 +41,7 @@ NODE=" "
 NB_TASK=1
 NB_GPU=1
 PARTITION="GPUNodes"
-SCRIPT="../co-training/co-training.py"
+SCRIPT="../co-training/co-training_teacher.py"
 
 # training parameters
 MODEL=wideresnet28_2
@@ -63,8 +58,9 @@ LCM=1
 LDM=0.5
 LCCM=1
 ALPHA=0.999
-NOISE=2
+NOISE=0
 SOFTMAX=1
+FUSION="m1"
 CC_METHOD=mse
 WL=160
 
@@ -99,6 +95,7 @@ while :; do
         --ema_alpha)        ALPHA=$(parse_long $2); shift; shift;;
         --teacher_noise)    NOISE=$(parse_long $2); shift; shift;;
         --ccost_method)     CC_METHOD=$(parse_long $2); shift; shift;;
+        --fusion_method)    FUSION=$(parse_long $2); shift; shift;;
 
         -n | --node)      NODE=$(parse_long $2); shift; shift;;
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
@@ -119,7 +116,7 @@ fi
 
 # ___________________________________________________________________________________ #
 LOG_DIR="logs"
-SBATCH_JOB_NAME=dct_${DATASET}_${MODEL}_${RATIO}S
+SBATCH_JOB_NAME=dct-t_${DATASET}_${MODEL}_${RATIO}S
 
 cat << EOT > .sbatch_tmp.sh
 #!/bin/bash
@@ -158,14 +155,15 @@ common_args="\${common_args} --seed ${SEED}"
 common_args="\${common_args} --lambda_cot_max ${LCM}"
 common_args="\${common_args} --lambda_diff_max ${LDM}"
 common_args="\${common_args} --warmup_length ${WL}"
+common_args="\${common_args} --fusion_method ${FUSION}"
 
 # Mean Teacher specific parameters
-common_args="\{common_args} --lambda_ccost_max ${LCCM}"
-common_args="\{common_args} --ema_alpha ${ALPHA}"
-common_args="\{common_args} --teacher_noise ${NOISE}"
+common_args="\${common_args} --lambda_ccost_max ${LCCM}"
+common_args="\${common_args} --ema_alpha ${ALPHA}"
+common_args="\${common_args} --teacher_noise ${NOISE}"
 common_args="\${common_args} --ccost_method ${CC_METHOD}"
-if [ $SOFTMAX -eq 1 ]; then
-    common_args="\${common_args} --ccost_softmax ${SOFTMAX}"
+if [ $SOFTMAX -eq 0 ]; then
+    common_args="\${common_args} --ccost_softmax"
 fi
 
 # -------- resume training --------
@@ -197,11 +195,12 @@ do
     extra_params="\${tensorboard_sufix} \${folds[\$i]}"
     
     echo "srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}"
-    srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
+    #srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
 done
 
 
 EOT
 
 echo "sbatch store in .sbatch_tmp.sh"
-sbatch .sbatch_tmp.sh
+#sbatch .sbatch_tmp.sh
+bash .sbatch_tmp.sh

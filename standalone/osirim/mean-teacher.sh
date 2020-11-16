@@ -21,6 +21,7 @@ function show_help {
     echo "    --learning_rate      LR (default 0.001)"
     echo "    --batch_size         BATCH_SIZE (default 64)"
     echo "    --seed               SEED (default 1234)"
+    echo ""
     echo "    --lambda_ccost_max   LCM The consistency cost maximum value"
     echo "    --alpha              ALPHA value for the exponential moving average"
     echo "    --warmup_length      WL The length of the warmup"
