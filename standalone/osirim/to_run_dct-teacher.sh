@@ -9,14 +9,16 @@ DCT_ARGS="${DCT_ARGS} --loss_cot_method mse"
 
 # MT parameters
 MT_ARGS="--ema_alpha 0.999 --teacher_noise 0 --lambda_ccost_max 1"
-MT_ARGS="${MT_ARGS} ccost_method js"
+MT_ARGS="${MT_ARGS} --ccost_method js"
 
 TOTAL_ARGS="${T_ARGS} ${DCT_ARGS} ${MT_ARGS}"
 # -----------------------------------------------------------------------------
 
 # For Mean Teacher, previous experiments show that using a JS divergence as consistency cost
-bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method m1 -C
+# bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method m1 -C -p RTX6000Node
 # bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method m2 -C
-bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method arithmetic_mean -C
-bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method geometric_mean -C
-bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method harmonic_mean  -C
+# bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method arithmetic_mean -C -p RTX6000Node
+# bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method geometric_mean -C -p RTX6000Node
+# bash deep-co-training_teacher.sh wideresnet28_2 esc10 ${TOTAL_ARGS} --fusion_method harmonic_mean  -C -p RTX6000Node
+
+bash deep-co-training_teacher.sh wideresnet28_2 ubs8k ${TOTAL_ARGS} --fusion_method m1 -C -p RTX6000Node -N 2

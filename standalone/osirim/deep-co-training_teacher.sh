@@ -27,6 +27,7 @@ function show_help {
     echo "    --lambda_cot_max   LCM Lambda cot max"
     echo "    --lcot_method      LCMETHOD loss cotraining method"
     echo "    --lambda_diff_max  LDM Lambda diff max"
+    echo "    --epsilon          EPS Empsilon for adversarial generation"
     echo "    --warmup_lenght    WL Warmup lenght"
     echo "    --lambda_ccost_max LCCM Lambda Consistency Const Max"
     echo "    --ema_alpha        ALPHA Exponentiel Moving average windows size"
@@ -55,15 +56,16 @@ RESUME=0
 CROSSVAL=0
 LR=0.0005
 SEED=1234
+EPS=0.002
 LCM=1
-LCMETHOD=mse
+LCMETHOD="mse"
 LDM=0.5
 LCCM=1
 ALPHA=0.999
 NOISE=0
 SOFTMAX=1
 FUSION="m1"
-CC_METHOD=js
+CC_METHOD="js"
 WL=160
 
 # Parse the first two parameters
@@ -82,29 +84,30 @@ while :; do
         -C | --crossval)    CROSSVAL=1; shift;;
         --ccost_softmax)    SOFTMAX=0; shift;;
 
-        --supervised_ratio) RATIO=$(parse_long $2); shift; shift;;
-        --nb_epoch)         EPOCH=$(parse_long $2); shift; shift;;
-        --learning_rate)    LR=$(parse_long $2); shift; shift;;
+        --supervised_ratio) RATIO=$(parse_long $2);      shift; shift;;
+        --nb_epoch)         EPOCH=$(parse_long $2);      shift; shift;;
+        --learning_rate)    LR=$(parse_long $2);         shift; shift;;
         --batch_size)       BATCH_SIZE=$(parse_long $2); shift; shift;;
-        --num_classes)      NB_CLS=$(parse_long $2); shift; shift;;
-        --seed)             SEED=$(parse_long $2); shift; shift;;
+        --num_classes)      NB_CLS=$(parse_long $2);     shift; shift;;
+        --seed)             SEED=$(parse_long $2);       shift; shift;;
 
-        --lambda_cot_max)   LCM=$(parse_long $2); shift; shift;; #
-        --loss_cot_method)  LCMETHOD=$(parse_long $2); shift; shift;;
-        --lambda_diff_max)  LDM=$(parse_long $2); shift; shift;; #
-        --warmup_length)    WL=$(parse_long $2); shift; shift;; #
+        --lambda_cot_max)   LCM=$(parse_long $2);        shift; shift;;
+        --loss_cot_method)  LCMETHOD=$(parse_long $2);   shift; shift;;
+        --lambda_diff_max)  LDM=$(parse_long $2);        shift; shift;;
+        --epsilon)          EPS=$(parse_long $2);        shift; shift;;
+        --warmup_length)    WL=$(parse_long $2);         shift; shift;;
 
-        --lambda_ccost_max) LCCM=$(parse_long $2); shift; shift;;
-        --ema_alpha)        ALPHA=$(parse_long $2); shift; shift;;
-        --teacher_noise)    NOISE=$(parse_long $2); shift; shift;;
-        --ccost_method)     CC_METHOD=$(parse_long $2); shift; shift;;
-        --fusion_method)    FUSION=$(parse_long $2); shift; shift;;
+        --lambda_ccost_max) LCCM=$(parse_long $2);       shift; shift;;
+        --ema_alpha)        ALPHA=$(parse_long $2);      shift; shift;;
+        --teacher_noise)    NOISE=$(parse_long $2);      shift; shift;;
+        --ccost_method)     CC_METHOD=$(parse_long $2);  shift; shift;;
+        --fusion_method)    FUSION=$(parse_long $2);     shift; shift;;
 
-        -n | --node)      NODE=$(parse_long $2); shift; shift;;
-        -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
-        -g | --nb_gpu)    NB_GPU=$(parse_long $2); shift; shift;;
-        -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
-        -s | --script) SCRIPT=$(parse_long $2); shift; shift;;
+        -n | --node)      NODE=$(parse_long $2);         shift; shift;;
+        -N | --nb_task)   NB_TASK=$(parse_long $2);      shift; shift;;
+        -g | --nb_gpu)    NB_GPU=$(parse_long $2);       shift; shift;;
+        -p | --partition) PARTITION=$(parse_long $2);    shift; shift;;
+        -s | --script) SCRIPT=$(parse_long $2);          shift; shift;;
 
         -?*) echo "WARN: unknown option" $1 >&2
     esac
@@ -158,6 +161,7 @@ common_args="\${common_args} --seed ${SEED}"
 common_args="\${common_args} --lambda_cot_max ${LCM}"
 common_args="\${common_args} --loss_cot_method ${LCMETHOD}"
 common_args="\${common_args} --lambda_diff_max ${LDM}"
+common_args="\${common_args} --epsilon ${EPS}"
 common_args="\${common_args} --warmup_length ${WL}"
 common_args="\${common_args} --fusion_method ${FUSION}"
 
@@ -186,6 +190,7 @@ esac
 
 
 run_number=0
+nb_task_running=0
 for i in \${!folds[*]}
 do
     run_number=\$(( \$run_number + 1 ))
@@ -199,12 +204,19 @@ do
     extra_params="\${tensorboard_sufix} \${folds[\$i]}"
     
     echo "srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}"
-    #srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
+    srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params} &
+
+    # count number of task, if max reached, wait and reset counter
+    nb_task_running=\$((\$nb_task_running + 1))
+    if [ \$nb_task_running -eq $NB_TASK ]; then
+        nb_task_running=0
+        wait
+/bin/bash: :w: command not found
 done
 
 
 EOT
 
 echo "sbatch store in .sbatch_tmp.sh"
-#sbatch .sbatch_tmp.sh
-bash .sbatch_tmp.sh
+sbatch .sbatch_tmp.sh
+# bash .sbatch_tmp.sh
