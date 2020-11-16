@@ -17,14 +17,15 @@ function show_help {
     echo "    -s | --script    SCRIPT       Which compatible should be executed"
     echo ""
     echo "Training parameters"
-    echo "    --ratio           SUPERVISED RATIO (default 1.0)"
-    echo "    --epoch           EPOCH (default 200)"
-    echo "    --learning_rate   LR (default 0.001)"
-    echo "    --batch_size      BATCH_SIZE (default 64)"
-    echo "    --seed            SEED (default 1234)"
+    echo "    --supervised_ratio SUPERVISED RATIO (default 1.0)"
+    echo "    --nb_epoch         EPOCH (default 200)"
+    echo "    --learning_rate    LR (default 0.001)"
+    echo "    --batch_size       BATCH_SIZE (default 64)"
+    echo "    --seed             SEED (default 1234)"
     
     echo "DCT & MT parameters"
     echo "    --lambda_cot_max   LCM Lambda cot max"
+    echo "    --lcot_method      LCMETHOD loss cotraining method"
     echo "    --lambda_diff_max  LDM Lambda diff max"
     echo "    --warmup_lenght    WL Warmup lenght"
     echo "    --lambda_ccost_max LCCM Lambda Consistency Const Max"
@@ -55,13 +56,14 @@ CROSSVAL=0
 LR=0.0005
 SEED=1234
 LCM=1
+LCMETHOD=mse
 LDM=0.5
 LCCM=1
 ALPHA=0.999
 NOISE=0
 SOFTMAX=1
 FUSION="m1"
-CC_METHOD=mse
+CC_METHOD=js
 WL=160
 
 # Parse the first two parameters
@@ -80,14 +82,15 @@ while :; do
         -C | --crossval)    CROSSVAL=1; shift;;
         --ccost_softmax)    SOFTMAX=0; shift;;
 
-        --ratio)            RATIO=$(parse_long $2); shift; shift;;
-        --epoch)            EPOCH=$(parse_long $2); shift; shift;;
+        --supervised_ratio) RATIO=$(parse_long $2); shift; shift;;
+        --nb_epoch)         EPOCH=$(parse_long $2); shift; shift;;
         --learning_rate)    LR=$(parse_long $2); shift; shift;;
         --batch_size)       BATCH_SIZE=$(parse_long $2); shift; shift;;
         --num_classes)      NB_CLS=$(parse_long $2); shift; shift;;
         --seed)             SEED=$(parse_long $2); shift; shift;;
 
         --lambda_cot_max)   LCM=$(parse_long $2); shift; shift;; #
+        --loss_cot_method)  LCMETHOD=$(parse_long $2); shift; shift;;
         --lambda_diff_max)  LDM=$(parse_long $2); shift; shift;; #
         --warmup_length)    WL=$(parse_long $2); shift; shift;; #
 
@@ -153,6 +156,7 @@ common_args="\${common_args} --seed ${SEED}"
 
 # -------- deep co training specific parameters --------
 common_args="\${common_args} --lambda_cot_max ${LCM}"
+common_args="\${common_args} --loss_cot_method ${LCMETHOD}"
 common_args="\${common_args} --lambda_diff_max ${LDM}"
 common_args="\${common_args} --warmup_length ${WL}"
 common_args="\${common_args} --fusion_method ${FUSION}"

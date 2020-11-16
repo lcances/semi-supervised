@@ -1,4 +1,6 @@
 import os
+
+from torch.nn.modules import loss
 os.environ["MKL_NUM_THREADS"] = "2"
 os.environ["NUMEXPR_NU M_THREADS"] = "2"
 os.environ["OMP_NUM_THREADS"] = "2"
@@ -16,7 +18,7 @@ from SSL.util.utils import reset_seed, get_datetime, track_maximum
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser
 from SSL.ramps import Warmup, sigmoid_rampup
-from SSL.losses import loss_cot, loss_diff, loss_sup, JensenShanon
+from SSL.losses import loss_diff, loss_sup, JensenShanon, js_from_softmax
 import argparse
 
 
@@ -43,6 +45,7 @@ group_u.add_argument("-v", "--val_folds", nargs="+", default=[5], type=int)
 
 group_h = parser.add_argument_group('hyperparameters')
 group_h.add_argument("--lambda_cot_max", default=1, type=float)
+group_g.add_argument("--loss_cot_method", default="mse", type=str)
 group_h.add_argument("--lambda_diff_max", default=0.5, type=float)
 group_h.add_argument("--warmup_length", default=160, type=int)
 group_h.add_argument("--fusion_method", default="harmonic_mean")
@@ -191,10 +194,15 @@ adv_generator_2 = GradientSignAttack(
 # %%
 # Losses
 # see losses.py
-if args.ccost_method == "mse":
+if args.loss_cot_method.lower() == "mse":
+    loss_cot = nn.MSELoss(reduction="mean")
+elif args.loss_cot_method.lower() == "js":
+    loss_cot = JensenShanon
+
+if args.ccost_method.lower() == "mse":
     consistency_cost = nn.MSELoss(reduction="mean") # Unsupervised loss
-elif args.ccost_method == "js":
-    consistency_cost = JensenShanon
+elif args.ccost_method.lower() == "js":
+    consistency_cost = js_from_softmax
 
 # define the warmups & add them to the callbacks (for update)
 lambda_cot = Warmup(args.lambda_cot_max, args.warmup_length, sigmoid_rampup)
@@ -379,12 +387,9 @@ def train(epoch):
                 logits_s1, logits_s2, adv_logits_s1, adv_logits_s2,
                 logits_u1, logits_u2, adv_logits_u1, adv_logits_u2)
 
-            # Teacher consistency cost
-            student_u = fusion_fn(softmax_fn(logits_u1), softmax_fn(logits_u2))
-
             # logits_student_u = logits_u1
             l_teacher = consistency_cost(
-                student_u, # softmax_fn is apply before during the fusion
+                fusion_fn(softmax_fn(logits_u1), softmax_fn(logits_u2)),
                 softmax_fn(logits_tu)
             )
 
