@@ -56,7 +56,7 @@ RESUME=0
 CROSSVAL=0
 LR=0.0005
 SEED=1234
-EPS=0.002
+EPS=0.02
 LCM=1
 LCMETHOD="mse"
 LDM=0.5
@@ -204,14 +204,9 @@ do
     extra_params="\${tensorboard_sufix} \${folds[\$i]}"
     
     echo "srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}"
-    srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params} &
+    srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
 
     # count number of task, if max reached, wait and reset counter
-    nb_task_running=\$((\$nb_task_running + 1))
-    if [ \$nb_task_running -eq $NB_TASK ]; then
-        nb_task_running=0
-        wait
-/bin/bash: :w: command not found
 done
 
 
