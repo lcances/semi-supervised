@@ -1,20 +1,24 @@
 import copy
+import torchaudio
 import random
+import tqdm
 import os
 import torch
 import numpy as np
 from torch.nn import Module
 from torch import Tensor
-from DCT.util.utils import ZipCycle
+from SSL.util.utils import DotDict, ZipCycle, get_datetime
 import torch.utils.data as torch_data
 from torchaudio.datasets import SPEECHCOMMANDS
 from tqdm import trange
+import functools
 
 from typing import Tuple
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 
 URL = "speech_commands_v0.02"
+EXCEPT_FOLDER = "_background_noise_"
 
 target_mapper = {
     "bed": 0,
@@ -53,6 +57,8 @@ target_mapper = {
     "zero": 33,
     "backward": 34
 }
+all_classes = target_mapper
+
 
 # =============================================================================
 # UTILITY FUNCTION
@@ -60,7 +66,7 @@ target_mapper = {
 
 
 def _split_s_u(train_dataset, s_ratio: float = 1.0):
-    _train_dataset = SpeechCommandsNoLoad.from_dataset(train_dataset)
+    _train_dataset = SpeechCommandsStats.from_dataset(train_dataset)
 
     nb_class = len(target_mapper)
     dataset_size = len(_train_dataset)
@@ -139,7 +145,7 @@ class SpeechCommands(SPEECHCOMMANDS):
             path = os.path.join(self._path, filename)
             with open(path, "r") as f:
                 to_keep = f.read().splitlines()
-                return [bn(path) for path in to_keep]
+                return set([bn(path) for path in to_keep])
 
         # Recover file list for validaiton and testing.
         validation_list = file_list("validation_list.txt")
@@ -147,7 +153,7 @@ class SpeechCommands(SPEECHCOMMANDS):
 
         # Create it for training
         training_list = [
-            bn(path)
+            path
             for path in self._walker
             if bn(path) not in validation_list
             and bn(path) not in testing_list
@@ -160,57 +166,12 @@ class SpeechCommands(SPEECHCOMMANDS):
             "testing": testing_list,
         }
 
-        self._walker = [f for f in self._walker if bn(
-            f) in mapper[self.subset]]
+        self._walker = mapper[self.subset]
 
-    def __split_train_val(self, ratio: float = 0.2):
-        """ To split train and validation, let try to not have same speaker in
-            both training and validation. """
-        def create_metadata() -> Tuple[str, str, int, int]:
-            labels, speaker_ids, utterance_numbers = [], [], []
-            filepaths = []
-
-            for i, filepath in enumerate(self._walker):
-                relpath = os.path.relpath(filepath, self._path)
-                label, filename = os.path.split(relpath)
-                speaker, _ = os.path.splitext(filename)
-
-                speaker_id, utterance_number = speaker.split("_nohash_")
-
-                labels.append(label)
-                speaker_ids.append(speaker_id)
-                utterance_numbers.append(utterance_number)
-                filepaths.append(filepath)
-
-            labels = np.asarray(labels)
-            speaker_ids = np.asarray(speaker_ids)
-            utterance_numbers = np.asarray(utterance_numbers)
-            filepaths = np.asarray(filepaths)
-
-            return filepaths, labels, speaker_ids, utterance_numbers
-
-        filepaths, labels, speaker_ids, utterance_numbers = create_metadata()
-
-        unique_speaker = np.unique(speaker_ids)
-        nb_val_speakers = int(len(unique_speaker) * ratio)
-
-        val_speakers = unique_speaker[:nb_val_speakers]
-        train_speakers = unique_speaker[nb_val_speakers:]
-
-        train_speaker_mask = sum(
-            [speaker_ids == s for s in train_speakers]) >= 1
-        val_speaker_mask = sum([speaker_ids == s for s in val_speakers]) >= 1
-
-        train_dataset = copy.deepcopy(self)
-        val_dataset = copy.deepcopy(self)
-
-        train_dataset._walker = np.asarray(self._walker)[train_speaker_mask]
-        val_dataset._walker = np.asarray(self._walker)[val_speaker_mask]
-
-        return train_dataset, val_dataset
+        # self._walker = [f for f in self._walker if bn(f) in mapper[self.subset]]
 
 
-class SpeechCommandsNoLoad(SpeechCommands):
+class SpeechCommandsStats(SpeechCommands):
     @classmethod
     def from_dataset(cls, dataset: SPEECHCOMMANDS):
         root = dataset.root
@@ -241,6 +202,121 @@ class SpeechCommandsNoLoad(SpeechCommands):
             fileid, self._path)
 
         return target_mapper[label], speaker_id, utterance_number
+
+
+class SpeechCommand10(SpeechCommands):
+    TRUE_CLASSES = ["yes", "no", "up", "down", "left",
+                    "right", "off", "on", "go", "stop"]
+
+    def __init__(self,
+                 root: str,
+                 subset: str = "train",
+                 url: str = URL,
+                 download: bool = False,
+                 transform: Module = None,
+                 percent_to_drop: float = 0.5) -> None:
+        super().__init__(root, subset, url, download, transform)
+
+        assert 0.0 < percent_to_drop < 1.0
+
+        self.percent_to_drop = percent_to_drop
+
+        self.target_mapper = {
+            "yes": 0,
+            "no": 1,
+            "up": 2,
+            "down": 3,
+            "left": 4,
+            "right": 5,
+            "off": 6,
+            "on": 7,
+            "go": 8,
+            "stop": 9,
+            "_background_noise_": 11
+        }
+
+        # the rest of the classes belong to the "junk / trash / poubelle class"
+        for cmd in all_classes:
+            if cmd not in self.target_mapper:
+                self.target_mapper[cmd] = 10
+
+        self.drop_some_trash()
+        self.add_silence()
+
+    @cache_feature
+    def __getitem__(self, index: int) -> Tuple[Tensor, int]:
+        filepath = self._walker[index]
+
+        label = filepath.split("/")[-2]
+        target = self.target_mapper[label]
+
+        if target == 11:
+            waveform = self.get_noise(index)
+
+        else:
+            waveform, _ = super().__getitem__(index)
+
+        return waveform, target
+
+    def drop_some_trash(self):
+        def is_trash(path):
+            if self.target_mapper[path.split("/")[-2]] == 10:
+                return True
+
+            return False
+
+        # Create the complete list of trash class
+        trash_list = [path for path in self._walker if is_trash(path)]
+
+        # choice only x% of it that will be removed
+        nb_to_drop = int(len(trash_list) * self.percent_to_drop)
+        to_drop = np.random.choice(trash_list, size=nb_to_drop, replace=False)
+
+        # remove it from the _walker
+        self._walker = list(set(self._walker) - set(to_drop))
+
+    def add_silence(self):
+        """simply add the filepath to _walker.
+        The class "silence" will be processes differently
+        """
+        root_path = self._walker[0].split("/")[:-2]
+        noise_path = os.path.join(*root_path, "_background_noise_")
+
+        to_add = []
+        for file in os.listdir(os.path.join(*root_path, EXCEPT_FOLDER)):
+            if file[-4:] == ".wav":
+                to_add.append(os.path.join(noise_path, file))
+
+        self._walker.extend(to_add)
+
+    @functools.lru_cache
+    def get_complete_noise(self, filepath):
+        waveform, sr = torchaudio.load(filepath)
+
+        return waveform, sr
+
+    def get_noise(self, index):
+        filepath = self._walker[index]
+
+        # Get the complete waveform of the corresponding noise file
+        complete_waveform, sr = self.get_complete_noise(filepath)
+
+        # randomly select 1 seconds
+        nb_second = 1
+        start_time = np.random.randint(0, len(complete_waveform[0]) - sr * nb_second)
+        return complete_waveform[0, start_time:start_time+(nb_second * sr)]
+
+
+
+
+if __name__ == "__main__":
+    sc = SpeechCommand10(root=os.path.join("..", "..", "datasets"))
+
+    for w, s in tqdm.tqdm(sc):
+        pass
+
+    for w, s in tqdm.tqdm(sc):
+        pass
 
 
 def dct(
@@ -388,10 +464,3 @@ def supervised(
             train_dataset, batch_size=batch_size, sampler=sampler_s, **loader_args)
 
     return None, train_loader, val_loader
-
-
-if __name__ == "__main__":
-    _, td, vd = load_supervised("/corpus/corpus")
-
-    print(len(td))
-    print(len(vd))
