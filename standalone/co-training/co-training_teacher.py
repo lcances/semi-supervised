@@ -45,7 +45,7 @@ group_u.add_argument("-v", "--val_folds", nargs="+", default=[5], type=int)
 
 group_h = parser.add_argument_group('hyperparameters')
 group_h.add_argument("--lambda_cot_max", default=1, type=float)
-group_g.add_argument("--loss_cot_method", default="mse", type=str)
+group_h.add_argument("--loss_cot_method", default="mse", type=str)
 group_h.add_argument("--lambda_diff_max", default=0.5, type=float)
 group_h.add_argument("--warmup_length", default=160, type=int)
 group_h.add_argument("--fusion_method", default="harmonic_mean")

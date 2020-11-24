@@ -10,6 +10,7 @@ __pycache__/
 .*.db-wal
 DCT.egg-info/
 venv.yml
+tmp/
 
 tensorboard/
 standalone/osirim/logs/
