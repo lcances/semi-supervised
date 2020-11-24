@@ -45,6 +45,7 @@ class Trainer:
 
         # Other parameters
         self.parameters = None
+        self.extra_hparams = DotDict()
 
     def init_trainer(self,
                      parameters: dict,
@@ -98,7 +99,10 @@ class Trainer:
         )
 
         self.manager, self.train_loader, self.val_loader = outputs
-        self.input_shape = tuple(self.train_loader.dataset[0][0].shape)
+        self.input_shape = self._get_input_shape()
+
+    def _get_input_shape(self):
+        return tuple(self.train_loader.dataset[0][0].shape)
 
     def create_model(self):
         print("Create the model")
@@ -162,6 +166,9 @@ class Trainer:
     # =========================================================================
     #       TRAINING METHODS
     # =========================================================================
+    def set_printing_form(self):
+        pass
+
     def train_fn(self, epoch: int):
         if self.train_loader is None:
             print("No training function define")
@@ -179,6 +186,8 @@ class Trainer:
 
     def fit(self, resume: bool = False):
         start_epoch = 0
+
+        self.set_printing_form()
 
         if resume:
             start_epoch = self.checkpoint.epoch_counter
@@ -211,7 +220,10 @@ class Trainer:
         self.tensorboard = SummaryWriter(log_dir="%s/%s" % (self.tensorboard_path, tensorboard_title))
 
     def save_hparams(self, parameters: dict):
-        hparams = parameters.copy()
+        hparams = dict(
+            **self.extra_hparams, **parameters
+        )
+
         hparams["model"] = self.model_str
 
         # Transform every Iterable into a str
