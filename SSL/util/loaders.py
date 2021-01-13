@@ -18,7 +18,7 @@ def load_callbacks(dataset: str, framework: str, **kwargs):
     import SSL.callbacks.speechcommand as s
 
     # get the corresping function mapper
-    dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s, "speechcommand10": s})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -28,7 +28,7 @@ def load_optimizer(dataset: str, framework: str, **kwargs):
     import SSL.optimizer.ubs8k as u
     import SSL.optimizer.speechcommand as s
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, "speechcommand10": s})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -38,7 +38,7 @@ def load_preprocesser(dataset: str, framework: str, **kwargs):
     import SSL.preprocessing.ubs8k as u
     import SSL.preprocessing.speechcommand as s
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, "speechcommand10": s})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -47,8 +47,9 @@ def load_dataset(dataset: str, framework: str, **kwargs):
     import SSL.dataset_loader.esc as e
     import SSL.dataset_loader.ubs8k as u
     import SSL.dataset_loader.speechcommand as s
+    import SSL.dataset_loader.speechcommand10 as s10
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, "speechcommand10": s10})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 

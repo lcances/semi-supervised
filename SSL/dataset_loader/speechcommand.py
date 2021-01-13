@@ -1,4 +1,6 @@
-import copy
+from random import weibullvariate
+from google.protobuf.descriptor import Error
+from numpy.lib.arraysetops import unique
 import torchaudio
 import random
 import tqdm
@@ -7,18 +9,19 @@ import torch
 import numpy as np
 from torch.nn import Module
 from torch import Tensor
-from SSL.util.utils import DotDict, ZipCycle, get_datetime
+from SSL.util.utils import ZipCycle
 import torch.utils.data as torch_data
 from torchaudio.datasets import SPEECHCOMMANDS
 from tqdm import trange
 import functools
+import soundfile
 
 from typing import Tuple
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader
 
 URL = "speech_commands_v0.02"
-EXCEPT_FOLDER = "_background_noise_"
+EXCEPT_FOLDER = ["_background_noise_", "silence"]
 
 target_mapper = {
     "bed": 0,
@@ -55,7 +58,7 @@ target_mapper = {
     "wow": 31,
     "yes": 32,
     "zero": 33,
-    "backward": 34
+    "backward": 34,
 }
 all_classes = target_mapper
 
@@ -112,11 +115,14 @@ class SpeechCommands(SPEECHCOMMANDS):
                  subset: str = "train",
                  url: str = URL,
                  download: bool = False,
-                 transform: Module = None) -> None:
+                 transform: Module = None,
+                 **kwargs) -> None:
         super().__init__(root, url, download, transform)
 
         assert subset in ["train", "validation", "testing"]
         self.subset = subset
+        self.root_path = self._walker[0].split("/")[:-2]
+
         self._keep_valid_files()
 
     @cache_feature
@@ -140,24 +146,38 @@ class SpeechCommands(SPEECHCOMMANDS):
 
     def _keep_valid_files(self):
         bn = os.path.basename
+        bn2 = lambda x: "/".join(x.split("/")[-2:])
 
         def file_list(filename):
             path = os.path.join(self._path, filename)
             with open(path, "r") as f:
                 to_keep = f.read().splitlines()
-                return set([bn(path) for path in to_keep])
+                return set([path for path in to_keep])
 
         # Recover file list for validaiton and testing.
         validation_list = file_list("validation_list.txt")
         testing_list = file_list("testing_list.txt")
 
         # Create it for training
+        import time
+        
         training_list = [
-            path
+            bn2(path)
             for path in self._walker
-            if bn(path) not in validation_list
-            and bn(path) not in testing_list
+            if bn2(path) not in validation_list
+            and bn2(path) not in testing_list
         ]
+
+        if self.subset == "train":
+            for p in training_list:
+                if p in validation_list:
+                    print("%s is train and validation" % p)
+                    raise ValueError()
+
+                if p in testing_list:
+                    print("%s is in both train and testing list" % p)
+                    raise ValueError()
+
 
         # Map the list to the corresponding subsets
         mapper = {
@@ -165,10 +185,11 @@ class SpeechCommands(SPEECHCOMMANDS):
             "validation": validation_list,
             "testing": testing_list,
         }
-
-        self._walker = mapper[self.subset]
-
-        # self._walker = [f for f in self._walker if bn(f) in mapper[self.subset]]
+    
+        self._walker = [
+            os.path.join(*self.root_path, path)
+            for path in mapper[self.subset]
+        ]
 
 
 class SpeechCommandsStats(SpeechCommands):
@@ -217,7 +238,7 @@ class SpeechCommand10(SpeechCommands):
                  percent_to_drop: float = 0.5) -> None:
         super().__init__(root, subset, url, download, transform)
 
-        assert 0.0 < percent_to_drop < 1.0
+        assert 0.0 <= percent_to_drop < 1.0
 
         self.percent_to_drop = percent_to_drop
 
@@ -232,14 +253,15 @@ class SpeechCommand10(SpeechCommands):
             "on": 7,
             "go": 8,
             "stop": 9,
-            "_background_noise_": 11
+            "silence": 10,
+            "unknown": 11
         }
 
         # the rest of the classes belong to the "junk / trash / poubelle class"
         for cmd in all_classes:
             if cmd not in self.target_mapper:
-                self.target_mapper[cmd] = 10
-
+                self.target_mapper[cmd] = 11
+                
         self.drop_some_trash()
         self.add_silence()
 
@@ -250,17 +272,13 @@ class SpeechCommand10(SpeechCommands):
         label = filepath.split("/")[-2]
         target = self.target_mapper[label]
 
-        if target == 11:
-            waveform = self.get_noise(index)
-
-        else:
-            waveform, _ = super().__getitem__(index)
+        waveform, _ = super().__getitem__(index)
 
         return waveform, target
 
     def drop_some_trash(self):
         def is_trash(path):
-            if self.target_mapper[path.split("/")[-2]] == 10:
+            if self.target_mapper[path.split("/")[-2]] == 11:
                 return True
 
             return False
@@ -275,48 +293,93 @@ class SpeechCommand10(SpeechCommands):
         # remove it from the _walker
         self._walker = list(set(self._walker) - set(to_drop))
 
+        print("%d out of %s junk files were drop." % (len(to_drop), len(trash_list)))
+
     def add_silence(self):
-        """simply add the filepath to _walker.
-        The class "silence" will be processes differently
+        """For the class silence, a new directory is created called "silence"
+        It will contain 1 seconds segment from the _background_noise_ directory
+        If the directory already exist, do some verification and pass
         """
-        root_path = self._walker[0].split("/")[:-2]
-        noise_path = os.path.join(*root_path, "_background_noise_")
+        silence_dir = os.path.join(*self.root_path, "silence")
 
-        to_add = []
-        for file in os.listdir(os.path.join(*root_path, EXCEPT_FOLDER)):
+        if os.path.isdir(silence_dir):
+            self._check_silence_class()
+
+        else:
+            self._create_silence_class()
+            self._check_silence_class()
+
+    def _create_silence_class2(self):
+        print("Silence class doesn't exist")
+        silence_dir = os.path.join(*self.root_path, "silence")
+        noise_path = os.path.join(*self.root_path, "_background_noise_")
+
+        # the silence class directory doesn't exist, create it
+        os.makedirs(silence_dir)
+
+        # Split each noise files into 1 second long segment
+        to_process = []
+        for file in os.listdir(os.path.join(*self.root_path, EXCEPT_FOLDER)):
             if file[-4:] == ".wav":
-                to_add.append(os.path.join(noise_path, file))
+                to_process.append(os.path.join(noise_path, file))
 
-        self._walker.extend(to_add)
+        # Basic way, split each files into 1 seconds long segment
+        print("Creating silence samples...")
+        for filepath in to_process:
+            basename = os.path.basename(filepath)
 
-    @functools.lru_cache
-    def get_complete_noise(self, filepath):
-        waveform, sr = torchaudio.load(filepath)
+            waveform, sr = torchaudio.load(filepath)
 
-        return waveform, sr
+            nb_full_segment = int(len(waveform[0]) / sr)
+            rest = len(waveform[0]) % sr
+            segments = np.split(waveform[0][:-rest], nb_full_segment)
 
-    def get_noise(self, index):
-        filepath = self._walker[index]
+            # write each segment as a wav file with a unique name
+            for i, s in enumerate(segments):
+                unique_id = f"{basename[:-4]}_nohash_{i}.wav"
+                path = os.path.join(silence_dir, unique_id)
+                soundfile.write(path, s, sr)
+        print("done")
 
-        # Get the complete waveform of the corresponding noise file
-        complete_waveform, sr = self.get_complete_noise(filepath)
+    def _create_silence_class(self):
+        print("Silence class doesn't exist")
+        silence_dir = os.path.join(*self.root_path, "silence")
+        noise_path = os.path.join(*self.root_path, "_background_noise_")
 
-        # randomly select 1 seconds
-        nb_second = 1
-        start_time = np.random.randint(0, len(complete_waveform[0]) - sr * nb_second)
-        return complete_waveform[0, start_time:start_time+(nb_second * sr)]
+        # the silence class directory doesn't exist, create it
+        os.makedirs(silence_dir)
+
+        # Split each noise files into 1 second long segment
+        to_process = []
+        for file in os.listdir(os.path.join(*self.root_path, EXCEPT_FOLDER)):
+            if file[-4:] == ".wav":
+                to_process.append(os.path.join(noise_path, file))
+
+        # Basic way, split each files into 1 seconds long segment
+        print("Creating silence samples...")
+        for filepath in to_process:
+            basename = os.path.basename(filepath)
+
+            waveform, sr = torchaudio.load(filepath)
+
+            # write each segment, we will create 300 segments of 1 secondes
+            start_timestamps = np.random.randint(0, len(waveform[0])-sr, size=400)
+            for i, st in enumerate(start_timestamps):
+                unique_id = f"{basename[:-4]}_nohash_{i}.wav"
+                path = os.path.join(silence_dir, unique_id)
+                
+                segment = waveform[0][st:st + sr]
+                soundfile.write(path, segment, sr)
+
+        print("done")
 
 
+    def _check_silence_class(self):
+        silence_dir = os.path.join(*self.root_path, "silence")
+        all_files = os.listdir(silence_dir)
 
-
-if __name__ == "__main__":
-    sc = SpeechCommand10(root=os.path.join("..", "..", "datasets"))
-
-    for w, s in tqdm.tqdm(sc):
-        pass
-
-    for w, s in tqdm.tqdm(sc):
-        pass
+        print("Silence class already processed")
+        print("%s samples present" % len(all_files))
 
 
 def dct(
@@ -336,17 +399,13 @@ def dct(
     dataset_path = os.path.join(dataset_root)
 
     # Validation subset
-    val_dataset = SpeechCommands(root=dataset_path, subset="validation", transform=train_transform, download=True)
+    val_dataset = SpeechCommand10(root=dataset_path, subset="validation", transform=train_transform, download=True)
     val_loader = DataLoader(
         val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommands(root=dataset_path, subset="train", transform=val_transform, download=True)
+    train_dataset = SpeechCommand10(root=dataset_path, subset="train", transform=val_transform, download=True)
     s_idx, u_idx = _split_s_u(train_dataset, supervised_ratio)
-
-    # Calc the size of the Supervised and Unsupervised batch
-    nb_s_file = len(s_idx)
-    nb_u_file = len(u_idx)
 
     s_batch_size = int(np.floor(batch_size * supervised_ratio))
     u_batch_size = int(np.ceil(batch_size * (1 - supervised_ratio)))
@@ -388,6 +447,19 @@ def mean_teacher(
         val_transform: Module = None,
 
         **kwargs) -> Tuple[DataLoader, DataLoader]:
+    return mean_teacher_helper(SpeechCommands, **locals())
+
+
+def mean_teacher_helper(
+        dataset_cls,
+        dataset_root,
+        supervised_ratio: float = 0.1,
+        batch_size: int = 128,
+
+        train_transform: Module = None,
+        val_transform: Module = None,
+
+        **kwargs) -> Tuple[DataLoader, DataLoader]:
     """
     Load the SpeechCommand for a student teacher learning
     """
@@ -398,14 +470,12 @@ def mean_teacher(
     dataset_path = os.path.join(dataset_root)
 
     # validation subset
-    val_dataset = SpeechCommands(root=dataset_path, subset="validation", transform=train_transform, download=True)
+    val_dataset = dataset_cls(root=dataset_path, subset="validation", transform=train_transform, download=True, percent_to_drop=0.0)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommands(root=dataset_path, subset="train", transform=val_transform, download=True)
+    train_dataset = dataset_cls(root=dataset_path, subset="train", transform=val_transform, download=True, percent_to_drop=0.93)
     s_idx, u_idx = _split_s_u(train_dataset, supervised_ratio)
-    nb_s_file = len(s_idx)
-    nb_u_file = len(u_idx)
 
     s_batch_size = int(np.floor(batch_size * supervised_ratio))
     u_batch_size = int(np.ceil(batch_size * (1 - supervised_ratio)))
@@ -443,13 +513,12 @@ def supervised(
     dataset_path = os.path.join(dataset_root)
 
     # validation subset
-    val_dataset = SpeechCommands(
-        root=dataset_path, subset="validation", transform=train_transform, download=True)
-    val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
+    val_dataset = SpeechCommand10(root=dataset_path, subset="validation",
+    transform=train_transform, download=True, percent_to_drop=0.0)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommands(
+    train_dataset = SpeechCommand10(
         root=dataset_path, subset="train", transform=val_transform, download=True)
 
     if supervised_ratio == 1.0:

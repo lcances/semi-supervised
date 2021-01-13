@@ -14,6 +14,7 @@ dataset_mapper = {
     "esc10": [esc],
     "esc50": [esc],
     "speechcommand": [sc],
+    "speechcommand10": [sc],
     "gtzan": [gtzan]
 }
 

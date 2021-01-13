@@ -122,12 +122,11 @@ class Trainer:
         title_element = (
             self.model_str,
             parameters.supervised_ratio,
-            get_datetime(),
             self.model_str,
             parameters.supervised_ratio,
         )
 
-        checkpoint_title = "%s/%sS/%s_%s_%.1fS" % title_element
+        checkpoint_title = "%s/%sS/%s_%.1fS" % title_element
         self.checkpoint = CheckPoint(
             self.model, self.optimizer,
             mode="max",
@@ -250,6 +249,9 @@ class Trainer:
 
         elif self.dataset.lower() in ["speechcommand"]:
             return 35
+
+        elif self.dataset.lower() in ["speechcommand10"]:
+            return 12
 
         elif self.dataset.lower() in ["esc50"]:
             return 50

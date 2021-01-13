@@ -1,7 +1,7 @@
 from typing import Tuple
 from torch.nn import Module
 from torch.nn import Sequential
-from DCT.util.transforms import PadUpTo
+from SSL.util.transforms import PadUpTo
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 
 commun_transforms = Sequential(
