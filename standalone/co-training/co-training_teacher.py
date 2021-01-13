@@ -64,7 +64,7 @@ group_l.add_argument("--checkpoint_path", default="deep-co-training", type=str)
 group_l.add_argument("--tensorboard_path", default="deep-co-training", type=str)
 group_l.add_argument("--tensorboard_sufix", default="", type=str)
 
-args = parser.parse_args("")
+args = parser.parse_args()
 
 tensorboard_path = os.path.join(args.tensorboard_root, args.dataset, args.tensorboard_path)
 checkpoint_path = os.path.join(args.checkpoint_root, args.dataset, args.checkpoint_path)

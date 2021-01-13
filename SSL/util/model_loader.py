@@ -4,6 +4,7 @@ import SSL.models.cifar10 as c10
 import SSL.models.esc as esc
 import SSL.models.speechcommands as sc
 import SSL.models.gtzan as gtzan
+import SSL.models.audioset as a
 
 import inspect
 import logging
@@ -14,8 +15,9 @@ dataset_mapper = {
     "esc10": [esc],
     "esc50": [esc],
     "speechcommand": [sc],
-    "speechcommand10": [sc],
-    "gtzan": [gtzan]
+    "gtzan": [gtzan],
+    "audioset-balanced": [a],
+    "audioset-unbalanced": [a],
 }
 
 

@@ -16,9 +16,11 @@ def load_callbacks(dataset: str, framework: str, **kwargs):
     import SSL.callbacks.esc as e
     import SSL.callbacks.ubs8k as u
     import SSL.callbacks.speechcommand as s
+    import SSL.callbacks.audioset as a
 
     # get the corresping function mapper
-    dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s, "speechcommand10": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
+                                   "audioset-balanced": a, "audioset-unbalanced": a})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -27,8 +29,10 @@ def load_optimizer(dataset: str, framework: str, **kwargs):
     import SSL.optimizer.esc as e
     import SSL.optimizer.ubs8k as u
     import SSL.optimizer.speechcommand as s
+    import SSL.optimizer.audioset as a
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, "speechcommand10": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s,
+                                   "audioset-balanced": a, "audioset-unbalanced": a})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -37,8 +41,10 @@ def load_preprocesser(dataset: str, framework: str, **kwargs):
     import SSL.preprocessing.esc as e
     import SSL.preprocessing.ubs8k as u
     import SSL.preprocessing.speechcommand as s
+    import SSL.preprocessing.audioset as a
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, "speechcommand10": s})
+    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s,
+                                   "audioset-balanced": a, "audioset-unbalanced": a})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -47,9 +53,16 @@ def load_dataset(dataset: str, framework: str, **kwargs):
     import SSL.dataset_loader.esc as e
     import SSL.dataset_loader.ubs8k as u
     import SSL.dataset_loader.speechcommand as s
-    import SSL.dataset_loader.speechcommand10 as s10
+    import SSL.dataset_loader.audioset_balanced as a_bal
+    import SSL.dataset_loader.audioset_unbalanced as a_unbal
+    
+    # Default dataset for audioset is the unsupervised version
+    if framework == "audioset":
+        framework = "audioset-unbalanced"
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, "speechcommand10": s10})
+    dataset_mapper = build_mapper(
+        {"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, 
+         "audioset-balanced": a_bal, "audioset-unbalanced": a_unbal})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
