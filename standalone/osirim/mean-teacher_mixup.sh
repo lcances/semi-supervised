@@ -12,6 +12,8 @@ function show_help {
     echo "    -C | --crossval   CROSSVAL (default FALSE)"
     echo "    -R | --resume     RESUME (default FALSE)"
     echo "    -h help"
+    echo "    -T | --tensorboard_path T_PATH (default=mean-teacher_mixup)"
+    echo "    --checkpoint_save       C_PATH (default=mean-teacher_mixup)"
     echo ""
     echo "Training parameters"
     echo "    --dataset            DATASET (default ubs8k)"
@@ -29,6 +31,8 @@ function show_help {
     echo "    --ccost_softmax      SOFTMAX Uses a softmax on the teacher logits (store false)"
     echo "    --ccost_method       CC_METHOD Uses JS or MSE for consistency cost"
     echo "    --tensorboard_sufix  SUFIX for the tensorboard name, more precision"
+    echo "    --mixup_alpha        M_ALPHA alpha coef for beta distribution"
+    echo "    --mixup_max          M_MAX apply max on lambda_ if 1, else not"
     echo ""
     echo "Osirim related parameters"
     echo "    -n | --node NODE              On which node the job will be executed"
@@ -49,23 +53,26 @@ NB_GPU=1
 PARTITION="GPUNodes"
 
 # training parameters
-MODEL=cnn03
+MODEL=wideresnet28_2
 DATASET="ubs8k"
 RATIO=0.1
 EPOCH=200
 NB_CLS=10
-BATCH_SIZE=100
+BATCH_SIZE=64
 RESUME=0
 CROSSVAL=0
-LR=0.003
+LR=0.001
 SEED=1234
-LCM=2
+LCM=1
 ALPHA=0.999
-WL=100
-NOISE=0
-SOFTMAX=1
+M_ALPHA=0.2
+M_MAX=0
+WL=50
+SOFTMAX=0
 CC_METHOD=mse
 SUFIX="_"
+T_PATH="mean-teacher_mixup"
+C_PATH="mean-teacher_mixup"
 
 
 # Parse the first two parameters
@@ -80,9 +87,12 @@ while :; do
     if ! [ "$1" ]; then break; fi
 
     case $1 in
-        -R | --resume)        RESUME=1; shift;;
-        -C | --crossval)      CROSSVAL=1; shift;;
-        --ccost_softmax)      SOFTMAX=0; shift;;
+        -R | --resume)           RESUME=1; shift;;
+        -C | --crossval)         CROSSVAL=1; shift;;
+        -T | --tensorboard_path) T_PATH=$(parse_long $2); shift; shift;;
+        --checkpoint_path)       C_PATH=$(parse_long $2); shift; shift;;
+        --ccost_softmax)         SOFTMAX=0; shift;;
+        --mixup_max)             M_MAX=1; shift;;
 
         --dataset)            DATASET=$(parse_long $2); shift; shift;;
         --model)              MODEL=$(parse_long $2); shift; shift;;
@@ -95,10 +105,9 @@ while :; do
 
         --lambda_ccost_max)   LCM=$(parse_long $2); shift; shift;;
         --alpha)              ALPHA=$(parse_long $2); shift; shift;;
-        --noise)              NOISE=$(parse_long $2); shift; shift;;
         --ccost_method)       CC_METHOD=$(parse_long $2); shift; shift;;
         --warmup_length)      WL=$(parse_long $2); shift; shift;;
-	    --noise)              NOISE="--noise"; shift;;
+        --mixup_alpha)        M_ALPHA=$(parse_long $2); shift; shift;;
 
         -n | --node)      NODE=$(parse_long $2); shift; shift;;
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
@@ -137,16 +146,19 @@ $NODELINE
 # container=/logiciels/containerCollections/CUDA10/pytorch.sif
 container=/users/samova/lcances/container/pytorch-dev.sif
 python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
-script=../student-teacher/student-teacher.py
+script=../mean-teacher/mean-teacher_mixup.py
 
 # prepare cross validation parameters
-folds=\$(cross_validation $DATASET $CROSSVAL)
+folds_str="$(cross_validation $DATASET $CROSSVAL)"
+IFS=";" read -a folds <<< \$folds_str
 
 # -------- dataset & model ------
 common_args="\${common_args} --dataset ${DATASET}"
 common_args="\${common_args} --model ${MODEL}"
 
 # -------- training common_args --------
+common_args="\${common_args} --tensorboard_path ${T_PATH}"
+common_args="\${common_args} --checkpoint_path ${C_PATH}"
 common_args="\${common_args} --supervised_ratio ${RATIO}"
 common_args="\${common_args} --nb_epoch ${EPOCH}"
 common_args="\${common_args} --learning_rate ${LR}"
@@ -156,10 +168,14 @@ common_args="\${common_args} --seed ${SEED}"
 common_args="\${common_args} --lambda_cost_max ${LCM}"
 common_args="\${common_args} --warmup_length ${WL}"
 common_args="\${common_args} --ema_alpha ${ALPHA}"
-common_args="\${common_args} --teacher_noise ${NOISE}"
 common_args="\${common_args} --ccost_method ${CC_METHOD}"
+common_args="\${common_args} --mixup_alpha ${M_ALPHA}"
 if [ $SOFTMAX -eq 1 ]; then
-    common_args="\${common_args} --ccost_softmax ${SOFTMAX}"
+    common_args="\${common_args} --ccost_softmax"
+fi
+
+if [ $M_MAX -eq 1 ]; then
+    common_args="\${common_args} --mixup_max"
 fi
 
 # -------- resume training --------
@@ -198,3 +214,4 @@ EOT
 
 echo "sbatch store in .sbatch_tmp.sh"
 sbatch .sbatch_tmp.sh
+#bash .sbatch_tmp.sh

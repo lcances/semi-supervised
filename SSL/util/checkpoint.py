@@ -24,9 +24,16 @@ class CheckPoint:
             self.model = [self.model]
 
         self.create_directory()
+        self._init_message()
 
     def create_directory(self):
         os.makedirs(os.path.dirname(self.name), exist_ok=True)
+        
+    def _init_message(self):
+        if self.verbose:
+            print('checkpoint initialise at: ', os.path.abspath(self.name))
+            print('name: ', os.path.basename(self.name))
+            print('mode: ', self.mode)
 
     def step(self, new_value):
         if self.epoch_counter == 0:
@@ -43,7 +50,7 @@ class CheckPoint:
 
             self.best_metric = new_value
             self.best_state = self._get_state(new_value)
-            torch.save(self.best_state, self.name)
+            torch.save(self.best_state, self.name + ".best")
 
         self.epoch_counter += 1
 
@@ -60,20 +67,27 @@ class CheckPoint:
 
     def save(self):
         torch.save(self._get_state, self.name + ".last")
+        
+    def load(self, path):
+        data = torch.load(path)
+        self._load_helper(data, self.last_state)
+        self._load_helper(data, self.best_state)
 
     def load_best(self):
-        if not os.path.isfile(self.name):
+        if not os.path.isfile(self.name + ".best"):
             return
 
-        data = torch.load(self.name)
+        data = torch.load(self.name + ".best")
         self._load_helper(data, self.best_state)
 
     def load_last(self):
         if not os.path.isfile(self.name + ".last"):
+            print(f"File {self.name}.last doesn't exist")
             return
 
         data = torch.load(self.name + ".last")
         self._load_helper(data, self.last_state)
+        print("Last save loaded ...")
 
     def _load_helper(self, state, destination):
         print(list(state.keys()))

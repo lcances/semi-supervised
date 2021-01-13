@@ -117,22 +117,6 @@ class Trainer:
 
         s = summary(self.model, self.input_shape)
 
-    def init_checkpoint(self, parameters: DotDict):
-        print("Prepare the checkpoint system")
-        title_element = (
-            self.model_str,
-            parameters.supervised_ratio,
-            get_datetime(),
-            self.model_str,
-            parameters.supervised_ratio,
-        )
-
-        checkpoint_title = "%s/%sS/%s_%s_%.1fS" % title_element
-        self.checkpoint = CheckPoint(
-            self.model, self.optimizer,
-            mode="max",
-            name=f"{self.checkpoint_path}/{checkpoint_title}")
-
     def init_optimizer(self, parameters: DotDict):
         print("Initialize optimizer")
         self.optimizer = load_optimizer(
@@ -205,7 +189,23 @@ class Trainer:
     # =========================================================================
     #       LOG METHODS
     # =========================================================================
-    def init_logs(self, parameters: DotDict):
+    def init_checkpoint(self, parameters: DotDict, suffix: str = ""):
+        print("Prepare the checkpoint system")
+        title_element = (
+            self.model_str,
+            parameters.supervised_ratio,
+            self.model_str,
+            parameters.supervised_ratio,
+        )
+
+        checkpoint_title = "%s/%sS/%s_%.1fS" % title_element
+        checkpoint_title += suffix
+        self.checkpoint = CheckPoint(
+            self.model, self.optimizer,
+            mode="max",
+            name=f"{self.checkpoint_path}/{checkpoint_title}")
+        
+    def init_logs(self, parameters: DotDict, suffix: str = ""):
         print("Prepare the log system")
         title_element = (
             self.model_str,
@@ -216,6 +216,7 @@ class Trainer:
         )
 
         tensorboard_title = "%s/%sS/%s_%s_%.1fS" % title_element
+        tensorboard_title += suffix
 
         self.tensorboard = SummaryWriter(log_dir="%s/%s" % (self.tensorboard_path, tensorboard_title))
 
@@ -253,6 +254,9 @@ class Trainer:
 
         elif self.dataset.lower() in ["esc50"]:
             return 50
+        
+        elif self.dataset.lower() in ["audioset", "audioset-balanced", "audioset-unbalanced"]:
+            return 527
 
         else:
             raise ValueError(f"Dataset {self.dataset} is not available")

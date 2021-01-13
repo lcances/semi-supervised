@@ -1,17 +1,3 @@
-# To add a new cell, type '# %%'
-# To add a new markdown cell, type '# %% [markdown]'
-# %%
-from IPython import get_ipython
-
-# %% [markdown]
-# # import
-https://arxiv.org/pdf/1703.01780.pdf
-# %%
-get_ipython().run_line_magic('load_ext', 'autoreload')
-get_ipython().run_line_magic('autoreload', '2')
-
-
-# %%
 import sys
 sys.executable
 
@@ -79,16 +65,17 @@ group_s.add_argument("--lambda_cost_max", default=1, type=float)
 group_s.add_argument("--teacher_noise", default=0, type=float)
 group_s.add_argument("--ccost_softmax", action="store_false", default=True)
 group_s.add_argument("--ccost_method", type=str, default="mse")
-group_s.add_argument("--mixup_alpha", default=0.4, type=float)
+group_s.add_argument("--mixup_alpha", default=0.2, type=float)
+group_s.add_argument("--mixup_max", action="store_true", default=False)
 
 group_l = parser.add_argument_group("Logs")
 group_l.add_argument("--checkpoint_root", default="../model_save/", type=str)
 group_l.add_argument("--tensorboard_root", default="../tensorboard/", type=str)
-group_l.add_argument("--checkpoint_path", default="mean-teacher", type=str)
-group_l.add_argument("--tensorboard_path", default="mean-teacher", type=str)
+group_l.add_argument("--checkpoint_path", default="mean-teacher_mixup", type=str)
+group_l.add_argument("--tensorboard_path", default="mean-teacher_mixup", type=str)
 group_l.add_argument("--tensorboard_sufix", default="", type=str)
 
-args=parser.parse_args("")
+args=parser.parse_args()
 
 tensorboard_path = os.path.join(args.tensorboard_root, args.dataset, args.tensorboard_path)
 checkpoint_path = os.path.join(args.checkpoint_root, args.dataset, args.checkpoint_path)
@@ -328,7 +315,10 @@ def get_mixup_fn(alpha: float = 0.4):
 
         beta = Beta(alpha, alpha)
         lambda_ = beta.sample().item() if alpha > 0.0 else 1.0
-        lambda_ = max((lambda_, 1 - lambda_))
+
+        if args.mixup_max:
+            lambda_ = max((lambda_, 1 - lambda_))
+
         mixup.lambda_history.append(lambda_)
 
         batch_mix = x * lambda_ + x_ * (1.0 - lambda_)
@@ -511,39 +501,6 @@ for e in range(start_epoch, args.nb_epoch):
     
     tensorboard.flush()
 
-# %% [markdown]
-# ## Save the hyper parameters and the metrics
-
-# %%
-def save_source_as_img(sourcepath: str):
-    # Create a zip file of the current source code
-    from zipfile import ZipFile, ZIP_DEFLATED, ZIP_LZMA
-
-    with ZipFile(sourcepath + ".zip", "w", compression=ZIP_DEFLATED, compresslevel=9) as myzip:
-        myzip.write(sourcepath)
-
-    # Read the just created zip file and store it into
-    # a uint8 numpy array
-    with open(sourcepath + ".zip", "rb") as myzip:
-        zip_bin = myzip.read()
-
-    zip_bin_n = numpy.array(list(map(int, zip_bin)), dtype=numpy.uint8)
-
-    # Convert it into a 2d matrix
-    desired_dimension = 500
-    missing = desired_dimension - (zip_bin_n.size % desired_dimension)
-    zip_bin_p = numpy.concatenate((zip_bin_n, numpy.array([0]*missing, dtype=numpy.uint8)))
-    zip_bin_i = numpy.asarray(zip_bin_p).reshape((desired_dimension, zip_bin_p.size // desired_dimension))
-
-    return zip_bin_i, missing
-
-
-# %%
-import matplotlib.pyplot as plt
-source_bin, _ = save_source_as_img("student-teacher.ipynb")
-plt.imshow(source_bin)
-
-
 # %%
 hparams = {}
 for key, value in args.__dict__.items():
@@ -557,63 +514,5 @@ final_metrics = {
 }
 tensorboard.add_hparams(hparams, final_metrics)
 
-source_code_img, padding_size = save_source_as_img("student-teacher.ipynb")
-tensorboard.add_image("student-teacher___%s" % padding_size, source_code_img , 0, dataformats="HW")
 tensorboard.flush()
 tensorboard.close()
-
-
-# %%
-source_code_img.shape, source_code_img.size
-
-# %% [markdown]
-# from hashlib import md5
-# md5(source_bin.flatten()).hexdigest(), md5(source_code_img.flatten()).hexdigest()
-# %% [markdown]
-# from PIL import Image
-# 
-# im = Image.open("tmp-232.png")
-# source_bin = numpy.asarray(im, dtype=numpy.uint8)
-# source_bin = source_bin[:, :, 0]
-# 
-# source_bin = source_bin.flatten()[:-232]
-# 
-# with open("student-teacher.ipynb.zip.bak", "wb") as mynewzip:
-#     mynewzip.write(source_bin)
-# 
-# # PROUT
-# %% [markdown]
-# ## display
-
-# %%
-import matplotlib.pyplot as plt
-import numpy as np
-
-x = list(range(checkpoint.epoch_counter))
-sm = lambda y, w: np.convolve(y, np.ones(w)/w, mode='same')
-pp = lambda k: plt.plot(x, tensorboard.history[k], label=f"{k} = {max(tensorboard.history[k])}")
-spp = lambda k: plt.plot(x, sm(tensorboard.history[k], 5), label=f"{k} = {max(tensorboard.history[k])}")
-
-
-plt.figure(0, figsize=(30, 14))
-plt.subplot(2, 3, 1)
-pp("max/student_acc")
-pp("max/teacher_acc")
-plt.legend()
-
-plt.subplot(2, 3, 3)
-pp("hyperparameters/learning_rate")
-plt.legend()
-
-plt.show()
-
-
-# %%
-plt.hist(mixup_fn.lambda_history, bins=20)
-plt.show()
-
-
-# %%
-
-
-
