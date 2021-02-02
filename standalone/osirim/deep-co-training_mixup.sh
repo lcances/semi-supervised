@@ -2,29 +2,29 @@ source bash_scripts/parse_option.sh
 source bash_scripts/cross_validation.sh
 
 function show_help {
-    echo "usage:  $BASH_SOURCE dataset model [-r | --ratio] [training options]"
+    echo "usage:  $BASH_SOURCE [osirim option] [training option]"
     echo ""
     echo "Miscalleous arguments"
     echo "    -C | --crossval   CROSSVAL (default FALSE)"
     echo "    -R | --resume     RESUME (default FALSE)"
-    echo "    -T | --tensorboard_path T_PATH (default=mean-teacher_mixup)"
     echo "    -h help"
     echo ""
     echo "Training parameters"
-    echo "    --dataset            DATASET (default ubs8k)"
-    echo "    --model              MODEL (default wideresnet28_4)"
-    echo "    --supervised_ratio   SUPERVISED RATIO (default 1.0)"
-    echo "    --batch_size         BATCH_SIZE (default 64)"
-    echo "    --nb_epoch              EPOCH (default 200)"
-    echo "    --learning_rate      LR (default 0.001)"
-    echo "    --seed               SEED (default 1234)"
+    echo "    --dataset         DATASET (default ubs8k)"
+    echo "    --model           MODEL (default wideresnet28_4)"
+    echo "    --supervised_ratio           SUPERVISED RATIO (default 1.0)"
+    echo "    --batch_size      BATCH_SIZE (default 64)"
+    echo "    --nb_epoch           EPOCH (default 200)"
+    echo "    --learning_rate   LR (default 0.001)"
+    echo "    --seed            SEED (default 1234)"
     echo ""
-    echo "    --ema_alpha          ALPHA value for the exponential moving average"
-    echo "    --warmup_length      WL The length of the warmup"
-    echo "    --lambda_cost_max    LCM The consistency cost maximum value"
-    echo "    --ccost_method       CC_METHOD Uses JS or MSE for consistency cost"
-    echo "    --ccost_softmax      FLAG"
+    echo " Deep Co training parameters"
+    echo "    --lambda_cot_max LCM          Lambda cot max"
+    echo "    --lambda_diff_max LDM         Lambda diff max"
+    echo "    --epsilon               EPSILON"
+    echo "    --warmup_lenght WL            Warmup lenght"
     echo ""
+    echo " Mixup augmentation parameters"
     echo "    --mixup              F_MIXUP"
     echo "    --mixup_alpha        M_ALPHA"
     echo "    --mixup_max      "
@@ -41,7 +41,8 @@ function show_help {
     echo "    RTX6000Node"
 }
 
-# osirim parameters
+# default parameters
+# osirim parametesr
 NODE=" "
 NB_TASK=1
 NB_GPU=1
@@ -49,18 +50,18 @@ PARTITION="GPUNodes"
 
 # training parameters
 DATASET="ubs8k"
-MODEL=wideresnet28_2
+MODEL="wideresnet28_2"
 SUPERVISED_RATIO=0.1
-BATCH_SIZE=64
-NB_EPOCH=200
-LR=0.001
+BATCH_SIZE=300
+NB_EPOCH=300
+LR=0.0005
 SEED=1234
 
-# Mean teacher parameters
-EMA_ALPHA=0.999
-WL=50
+# Deep Co training parameters
 LCM=1
-CC_METHOD=js
+LDM=0.5
+EPSILON=0.02
+WL=160
 
 # mixup parameters
 M_ALPHA=""
@@ -80,22 +81,21 @@ while :; do
     if ! [ "$1" ]; then break; fi
 
     case $1 in
-        -R | --resume)        FLAG="${FLAG} --resume"; shift;;
-        -C | --crossval)      CROSSVAL=1; shift;;
+        -R | --resume)      RESUME=1; shift;;
+        -C | --crossval)    CROSSVAL=1; shift;;
 
-        --dataset)            DATASET=$(parse_long $2); shift; shift;;
-        --model)              MODEL=$(parse_long $2); shift; shift;;
-        --supervised_ratio)   SUPERVISED_RATIO=$(parse_long $2); shift; shift;;
-        --nb_epoch)           NB_EPOCH=$(parse_long $2); shift; shift;;
-        --learning_rate)      LR=$(parse_long $2); shift; shift;;
-        --batch_size)         BATCH_SIZE=$(parse_long $2); shift; shift;;
-        --seed)               SEED=$(parse_long $2); shift; shift;;
+        --dataset)          DATASET=$(parse_long $2); shift; shift;;
+        --model)            MODEL=$(parse_long $2); shift; shift;;
+        --supervised_ratio) SUPERVISED_RATIO=$(parse_long $2); shift; shift;;
+        --nb_epoch)         NB_EPOCH=$(parse_long $2); shift; shift;;
+        --learning_rate)    LR=$(parse_long $2); shift; shift;;
+        --batch_size)       BATCH_SIZE=$(parse_long $2); shift; shift;;
+        --seed)             SEED=$(parse_long $2); shift; shift;;
 
-        --ema_alpha)          EMA_ALPHA=$(parse_long $2); shift; shift;;
-        --warmup_length)      WL=$(parse_long $2); shift; shift;;
-        --lambda_cost_max)    LCM=$(parse_long $2); shift; shift;;
-        --ccost_method)       CC_METHOD=$(parse_long $2); shift; shift;;
-        --ccost_softmax)      FLAG="${FLAG} --ccost_softmax"; shift;;
+        --lambda_cot_max)   LCM=$(parse_long $2); shift; shift;; #
+        --lambda_diff_max)  LDM=$(parse_long $2); shift; shift;; #
+        --warmup_length)    WL=$(parse_long $2); shift; shift;; #
+        --epsilon)          EPSILON=$(parse_long $2); shift; shift;; #
         
         --mixup)              FLAG="${FLAG} --mixup";       EXTRA_NAME="${EXTRA_NAME}_mixup"; shift;;
         --mixup_alpha)        M_ALPHA=$(parse_long $2);     EXTRA_NAME="${EXTRA_NAME}-${M_ALPHA}a": shift; shift;;
@@ -106,6 +106,7 @@ while :; do
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
         -g | --nb_gpu)    NB_GPU=$(parse_long $2); shift; shift;;
         -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
+        -s | --script) SCRIPT=$(parse_long $2); shift; shift;;
 
         -?*) echo "WARN: unknown option" $1 >&2
     esac
@@ -120,7 +121,8 @@ fi
 
 # ___________________________________________________________________________________ #
 LOG_DIR="logs"
-SBATCH_JOB_NAME=mt_${DATASET}_${MODEL}_${SUPERVISED_RATIO}S_${EXTRA_NAME}
+SBATCH_JOB_NAME=dct_${DATASET}_${MODEL}_${SUPERVISED_RATIO}S${EXTRA_NAME}
+echo logs save at $SBATCH_JOB_NAME
 
 cat << EOT > .sbatch_tmp.sh
 #!/bin/bash
@@ -134,14 +136,24 @@ cat << EOT > .sbatch_tmp.sh
 #SBATCH --gres-flags=enforce-binding
 $NODELINE
 
-
 # sbatch configuration
 # container=/logiciels/containerCollections/CUDA10/pytorch.sif
 container=/users/samova/lcances/container/pytorch-dev.sif
 python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
-script=../mean-teacher/mean-teacher_mixup.py
+script=../co-training/co-training_mixup.py
 
 source bash_scripts/add_option.sh
+
+
+# prepare cross validation parameters
+# ---- default, no crossvalidation
+if [ "$DATASET" = "ubs8k" ]; then
+    folds=("-t 1 2 3 4 5 6 7 8 9 -v 10")
+elif [ "$DATASET" = "esc10" ] || [ "$DATASET" = "esc50" ]; then
+    folds=("-t 1 2 3 4 -v 5")
+elif [ "$DATASET" = "SpeechCommand" ]; then
+    folds=("-t 1 -v 2") # fake array to ensure exactly one run. Nut used by SpeechCommand anyway"
+fi
 
 # prepare cross validation parameters
 folds_str="$(cross_validation $DATASET $CROSSVAL)"
@@ -158,25 +170,25 @@ common_args=\$(append "\$common_args" $LR '--learning_rate')
 common_args=\$(append "\$common_args" $BATCH_SIZE '--batch_size')
 common_args=\$(append "\$common_args" $SEED '--seed')
 
-# -------- mean teacher parameters --------
-common_args=\$(append "\$common_args" $EMA_ALPHA '--ema_alpha')
+# -------- deep co training specific parameters --------
+common_args=\$(append "\$common_args" $LCM '--lambda_cot_max')
+common_args=\$(append "\$common_args" $LDM '--lambda_diff_max')
 common_args=\$(append "\$common_args" $WL '--warmup_length')
-common_args=\$(append "\$common_args" $LCM '--lambda_cost_max')
-common_args=\$(append "\$common_args" $CC_METHOD '--ccost_method')
+common_args=\$(append "\$common_args" $EPSILON '--epsilon')
 
 # -------- mixup parameters --------
 common_args=\$(append "\$common_args" $M_ALPHA '--mixup_alpha')
 
 # -------- flags --------
 # should contain mixup_max, mixup_label, ccost_softmax
-common_args="\${common_args} ${FLAG}"
+common_args="\${common_args} $FLAG"
 
 # -------- resume training --------
 if [ $RESUME -eq 1 ]; then
     common_args="\${common_args} --resume"
 fi
 
-# -------- dataset specific parameters --------
+# dataset specific parameters
 case $DATASET in
     ubs8k | esc10) dataset_args="--num_classes 10";;
     esc50) dataset_args="--num_classes 50";;
@@ -207,4 +219,4 @@ EOT
 
 echo "sbatch store in .sbatch_tmp.sh"
 sbatch .sbatch_tmp.sh
-# bash .sbatch_tmp.sh
+#bash .sbatch_tmp.sh

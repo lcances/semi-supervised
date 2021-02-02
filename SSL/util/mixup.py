@@ -1,46 +1,93 @@
+
 import torch
-from torch.utils.data import DataLoader
+
+from torch import Tensor
 from torch.distributions.beta import Beta
+from torch.nn import Module
 
 
-def get_mixup_fn(alpha: float = 0.4, use_max: bool = True, mix_label: bool = True):
-    def mixup(x, y, batch_generator: DataLoader = None):
-        from torch.distributions.beta import Beta
+class MixUp(Module):
+    """
+        Module MixUp that mix batch and labels with a parameter lambda sample from a beta distribution.
 
-        if alpha == 0.0:
-            return x, y
+        Code overview :
 
-        # If a DataLoader is provided as batch generator, use it
-        if batch_generator is not None:
-            generator = iter(batch_generator)
-            x_, y_ = generator.next()
+        lambda ~ Beta(alpha, alpha) \n
+        lambda = max(lambda, 1 - lambda) \n
+        batch = batch_a * lambda + batch_b * (1 - lambda) \n
+        label = label_a * lambda + label_b * (1 - lambda) \n
+
+        Note:
+            - if alpha -> 0 and apply_max == True, lambda sampled near 1,
+            - if alpha -> 1 and apply_max == True, lambda sampled from an uniform distribution in [0.5, 1.0],
+            - if alpha -> 0 and apply_max == False, lambda sampled near 1 or 0,
+            - if alpha -> 1 and apply_max == False, lambda sampled from an uniform distribution in [0.0, 1.0],
+    """
+
+    def __init__(self, alpha: float = 0.4, apply_max: bool = False, mix_labels: bool = True):
+        """
+            Build the MixUp Module.
+
+            :param alpha: Controls the Beta distribution used to sampled the coefficient lambda. (default: 0.4)
+            :param apply_max: If True, apply the "lambda = max(lambda, 1 - lambda)" after the sampling of lambda. (default: False)
+                This operation is useful for having a mixed batch near to the first batch passed as input.
+                It was set to True in MixMatch training but not in original MixUp training.
+            :param mix_labels: If True, the labels of the two batches are mix using the same lambda, If False, the label of 
+                batch_a are kept as is.
+        """
+        super().__init__()
+        self.alpha = alpha
+        self.apply_max = apply_max
+        self.mix_labels = mix_labels
+
+        self._beta = Beta(alpha, alpha)
+        self._lambda = 0.0
+
+    def forward(self, batch_a: Tensor, batch_b: Tensor, labels_a: Tensor, labels_b: Tensor) -> (Tensor, Tensor):
+        """
+            Apply MixUp to batches and labels.
+        """
+        if batch_a.shape != batch_b.shape or labels_a.shape != labels_b.shape:
+            raise RuntimeError("Invalid shapes for MixUp : ({:s} != {:s} or {:s} != {:s})".format(
+                batch_a.shape, batch_b.shape, labels_a.shape, labels_b.shape))
+
+        # Sample from Beta distribution
+        self._lambda = self._beta.sample().item() if self.alpha > 0.0 else 1.0
+
+        if self.apply_max:
+            self._lambda = max(self._lambda, 1.0 - self._lambda)
+
+        labels_mix = labels_a
+        if self.mix_labels:
+            labels_mix = labels_a * self._lambda + labels_b * (1.0 - self._lambda)
+
             
-        #Otherwise, mix it with the same batch (flipped)
-        else:
-            x_ = torch.flip(x.clone().detach(), (0, ))
-            y_ = torch.flip(y.clone().detach(), (0, ))
-
-        # Toward the end of the epoch, the last batch can be incomplete,
-        # but the newly fetch batch will not be, so we need to trim
-        if batch_generator is not None:
-            if x.size()[0] != x_.size()[0]:
-                return x, y
-
-        beta = Beta(alpha, alpha)
-        lambda_ = beta.sample().item() if alpha > 0.0 else 1.0
+        batch_mix = batch_a * self._lambda + batch_b * (1.0 - self._lambda)
         
-        if use_max:
-            lambda_ = max((lambda_, 1 - lambda_))
-
-        mixup.lambda_history.append(lambda_)
-
-        batch_mix = x * lambda_ + x_ * (1.0 - lambda_)
-        
-        labels_mix = y
-        if mix_label:
-            labels_mix = y * lambda_ + y_ * (1.0 - lambda_)
-
         return batch_mix, labels_mix
 
-    mixup.lambda_history = []
-    return mixup
+    def get_last_lambda(self) -> float:
+        """
+            Returns the last lambda sampled. If no data has been passed to forward(), returns 0.0.
+        """
+        return self._lambda
+
+
+class MixUpBatchShuffle(Module):
+    """
+        Apply MixUp transform with the same batch in a different order. See MixUp module for details.
+    """
+    def __init__(self, alpha: float = 0.4, apply_max: bool = False, mix_labels: bool = True):
+        super().__init__()
+        self.mixup = MixUp(alpha, apply_max, mix_labels)
+
+    def forward(self, batch: Tensor, labels: Tensor) -> (Tensor, Tensor):
+        assert batch.shape[0] == labels.shape[0]
+        batch_size = batch.shape[0]
+        indexes = torch.randperm(batch_size)
+        batch_shuffle = batch[indexes]
+        labels_shuffle = labels[indexes]
+        return self.mixup(batch, batch_shuffle, labels, labels_shuffle)
+
+    def get_last_lambda(self) -> float:
+        return self.mixup.get_last_lambda()

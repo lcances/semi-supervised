@@ -74,8 +74,10 @@ SA_TDW=32
 SA_TSN=2
 SA_FDW=4
 SA_FSN=2
+
 FLAG=""
 F_MIXUP=""
+F_SA=""
 NAME_EXTRA=""
 
 # Parse the optional parameters
@@ -89,7 +91,7 @@ while :; do
         --dataset) DATASET=$(parse_long $2); shift; shift;;
         --model) MODEL=$(parse_long $2); shift; shift;;
         --supervised_ratio) RATIO=$(parse_long $2); shift; shift;;
-        --nb_epoch)            EPOCH=$(parse_long $2); shift; shift;;
+        --nb_epoch)         NB_EPOCH=$(parse_long $2); shift; shift;;
         --learning_rate)    LR=$(parse_long $2); shift; shift;;
         --batch_size)       BATCH_SIZE=$(parse_long $2); shift; shift;;
         --seed)             SEED=$(parse_long $2); shift; shift;;
@@ -99,12 +101,12 @@ while :; do
         -g | --nb_gpu) NB_GPU=$(parse_long $2); shift; shift;;
         -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
         
-        --mixup) FLAG="${FLAG} --mixup"; F_MIXUP="mixup"; shift;;
+        --mixup) FLAG="${FLAG} --mixup"; F_MIXUP="_mixup"; shift;;
         --mixup_alpha) ALPHA=$(parse_long $2); shift; shift;;
         --mixup_max) FLAG="${FLAG} --mixup_max"; shift;;
         --mixup_label) FLAG="${FLAG} --mixup_label"; shift;;
         
-        --specAugment) FLAG="${FLAG} --specAugment"; shift;;
+        --specAugment) FLAG="${FLAG} --specAugment"; F_SA="_specAugment" shift;;
         --sa_time_drop_width) SA_TDW=$(parse_long $2); shift; shift;;
         --sa_time_stripes_num) SA_TSN=$(parse_long $2); shift; shift;;
         --sa_freq_drop_width) SA_FDW=$(parse_long $2); shift; shift;;
@@ -124,7 +126,8 @@ fi
 
 # ___________________________________________________________________________________ #
 LOG_DIR="logs"
-SBATCH_JOB_NAME=sup_${DATASET}_${MODEL}_${RATIO}S_${F_MIXUP}
+EXTRA_NAME="${F_MIXUP}${F_SA}"
+SBATCH_JOB_NAME=sup_${DATASET}_${MODEL}_${RATIO}S_${EXTRA_NAME}
 
 cat << EOT > .sbatch_tmp.sh
 #!/bin/bash
@@ -154,7 +157,7 @@ common_args="\${common_args} --model ${MODEL}"
 
 # -------- training common_args --------
 common_args="\${common_args} --supervised_ratio ${RATIO}"
-common_args="\${common_args} --nb_epoch ${EPOCH}"
+common_args="\${common_args} --nb_epoch ${NB_EPOCH}"
 common_args="\${common_args} --learning_rate ${LR}"
 common_args="\${common_args} --batch_size ${BATCH_SIZE}"
 common_args="\${common_args} --seed ${SEED}"
@@ -166,8 +169,8 @@ common_args="\${common_args} --mixup_alpha ${ALPHA}"
 common_args="\${common_args} $FLAG"
 
 # -------- log sufix --------
-if [ -n "${F_MIXUP}" ]; then
-    l_suffix="--log_suffix ${F_MIXUP}"
+if [ -n "${EXTRA_NAME}" ]; then
+    l_suffix="--log_suffix ${EXTRA_NAME}"
 fi
     
 echo srun -n 1 -N 1 singularity exec \${container} \${python} \${script} \${common_args} \${l_suffix}

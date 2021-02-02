@@ -28,15 +28,11 @@ from torch.utils.data import DataLoader
 
 from torchlibrosa.augmentation import SpecAugmentation
 
-
-# In[4]:
-
-
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
+from SSL.util.mixup import MixUpBatchShuffle
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, DotDict
-from SSL.util.mixup import get_mixup_fn
 
 from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage
 
@@ -302,10 +298,8 @@ spec_augmenter = SpecAugmentation(time_drop_width=args.sa_time_drop_width,
                                   freq_stripes_num=args.sa_freq_stripes_num)
 
 # Mixup
-mixup_fn = get_mixup_fn(alpha=args.mixup_alpha, use_max=args.mixup_max, mix_label=args.mixup_label)
+mixup_fn = MixUpBatchShuffle(alpha=args.mixup_alpha, apply_max=args.mixup_max, mix_labels=args.mixup_label)
 
-
-# In[26]:
 
 
 batch_summed = []

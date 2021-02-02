@@ -587,7 +587,7 @@ def get_supervised(version: str = "unbalanced", **kwargs):
 
         balancer = None
         if balance:
-            balancer = batch_balancer(batch_size=batch_size, pool_size=batch_size)
+            balancer = batch_balancer(batch_size=batch_size, pool_size=batch_size*4)
 
 
         # validation subset
@@ -600,7 +600,7 @@ def get_supervised(version: str = "unbalanced", **kwargs):
         train_sampler = ChunkAlignSampler(train_dataset, batch_size=batch_size, shuffle=True)
 
         if supervised_ratio == 1.0:
-            s_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=balancer,  **l_params)
+            s_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=balancer, **l_params)
 
         else:
             if unsupervised_ratio is None:

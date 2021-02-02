@@ -2,21 +2,20 @@
 # =============================================================================
 # UrbanSound8k models
 # =============================================================================
-from DCT.models.ubs8k import cnn0
-from DCT.models.ubs8k_test import cnn03, cnn06
+from SSL.models.ubs8k import cnn0
+from SSL.models.ubs8k_test import cnn03, cnn06
 
 # =============================================================================
 #    PyTorch RESNET
 # =============================================================================
 import torchvision.models as torch_models
 from torchvision.models.resnet import Bottleneck, BasicBlock
-from DCT.models.wideresnet import ResNet
+from SSL.models.wideresnet import ResNet
 
 
 class mResnet(torch_models.ResNet):
     def forward(self, x):
         x = x.view(-1, 1, *x.shape[1:])
-        x = x.repeat(1, 3, 1, 1)
 
         return self._forward_impl(x)
 
@@ -39,7 +38,6 @@ def resnet18(**kwargs):
 class mWideResnet(ResNet):
     def forward(self, x):
         x = x.view(-1, 1, *x.shape[1:])
-        x = x.repeat(1, 3, 1, 1)
 
         return self._forward_impl(x)
 

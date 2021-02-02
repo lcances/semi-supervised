@@ -4,7 +4,7 @@ import torch.nn as nn
 import librosa
 
 from ubs8k.datasetManager import DatasetManager, conditional_cache_v2
-from DCT.layers import ConvPoolReLU, ConvReLU, ConvBNReLUPool, ConvAdvBNReLUPool
+from SSL.layers import ConvPoolReLU, ConvReLU, ConvBNReLUPool, ConvAdvBNReLUPool
 
 
 class cnn(nn.Module):
@@ -292,7 +292,7 @@ def scallable1(manager):
 
 import torchvision.models as torch_models
 from torchvision.models.resnet import Bottleneck, BasicBlock
-from DCT.models.wideresnet import ResNet
+from SSL.models.wideresnet import ResNet
 
 
 class mResnet(torch_models.ResNet):
@@ -321,7 +321,7 @@ def resnet18(**kwargs):
 class mWideResnet(ResNet):
     def forward(self, x):
         x = x.view(-1, 1, *x.shape[1:])
-        x = x.repeat(1, 3, 1, 1)
+#         x = x.repeat(1, 3, 1, 1)
 
         return self._forward_impl(x)
 

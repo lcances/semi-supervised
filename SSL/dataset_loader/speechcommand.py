@@ -399,12 +399,12 @@ def dct(
     dataset_path = os.path.join(dataset_root)
 
     # Validation subset
-    val_dataset = SpeechCommand10(root=dataset_path, subset="validation", transform=train_transform, download=True)
+    val_dataset = SpeechCommands(root=dataset_path, subset="validation", transform=train_transform, download=True)
     val_loader = DataLoader(
         val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommand10(root=dataset_path, subset="train", transform=val_transform, download=True)
+    train_dataset = SpeechCommands(root=dataset_path, subset="train", transform=val_transform, download=True)
     s_idx, u_idx = _split_s_u(train_dataset, supervised_ratio)
 
     s_batch_size = int(np.floor(batch_size * supervised_ratio))
@@ -413,12 +413,9 @@ def dct(
     sampler_s = SubsetRandomSampler(s_idx)
     sampler_u = SubsetRandomSampler(u_idx)
 
-    train_loader_s1 = DataLoader(
-        train_dataset, batch_size=s_batch_size, sampler=sampler_s, **loader_args)
-    train_loader_s2 = DataLoader(
-        train_dataset, batch_size=s_batch_size, sampler=sampler_s, **loader_args)
-    train_loader_u = DataLoader(
-        train_dataset, batch_size=u_batch_size, sampler=sampler_u, **loader_args)
+    train_loader_s1 = DataLoader(train_dataset, batch_size=s_batch_size, sampler=sampler_s, **loader_args) 
+    train_loader_s2 = DataLoader(train_dataset, batch_size=s_batch_size, sampler=sampler_s, **loader_args)
+    train_loader_u = DataLoader(train_dataset, batch_size=u_batch_size, sampler=sampler_u, **loader_args)
 
     # combine the three loader into one
     train_loader = ZipCycle([train_loader_s1, train_loader_s2, train_loader_u])
@@ -513,12 +510,12 @@ def supervised(
     dataset_path = os.path.join(dataset_root)
 
     # validation subset
-    val_dataset = SpeechCommand10(root=dataset_path, subset="validation",
+    val_dataset = SpeechCommand(root=dataset_path, subset="validation",
     transform=train_transform, download=True, percent_to_drop=0.0)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommand10(
+    train_dataset = SpeechCommand(
         root=dataset_path, subset="train", transform=val_transform, download=True)
 
     if supervised_ratio == 1.0:

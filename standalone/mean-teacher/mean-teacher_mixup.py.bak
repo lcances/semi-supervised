@@ -1,12 +1,8 @@
-#!/usr/bin/env python
-# coding: utf-8
 import sys
 sys.executable
 
 
-# In[3]:
-
-
+# %%
 import os
 os.environ["MKL_NUM_THREADS"] = "2"
 os.environ["NUMEXPR_NU M_THREADS"] = "2"
@@ -26,25 +22,20 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
 
-# In[4]:
-
-
+# %%
 from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser
 from SSL.util.model_loader import load_model
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
-from SSL.util.mixup import MixUpBatchShuffle
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, DotDict
 from SSL.ramps import Warmup, sigmoid_rampup
 from SSL.losses import JensenShanon
 
 from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage
 
-
+# %% [markdown]
 # # Arguments
 
-# In[5]:
-
-
+# %%
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--from_config", default="", type=str)
@@ -59,7 +50,9 @@ group_t.add_argument("--nb_epoch", default=200, type=int)
 group_t.add_argument("--learning_rate", default=0.001, type=float)
 group_t.add_argument("--resume", action="store_true", default=False)
 group_t.add_argument("--seed", default=1234, type=int)
-group_t.add_argument("--num_classes", default=10, type=int)
+
+group_m = parser.add_argument_group("Model parameters")
+group_m.add_argument("--num_classes", default=10, type=int)
 
 group_u = parser.add_argument_group("Datasets parameters")
 group_u.add_argument("-t", "--train_folds", nargs="+", default=[1, 2, 3, 4, 5, 6, 7, 8, 9], type=int)
@@ -69,18 +62,15 @@ group_s = parser.add_argument_group("Student teacher parameters")
 group_s.add_argument("--ema_alpha", default=0.999, type=float)
 group_s.add_argument("--warmup_length", default=50, type=int)
 group_s.add_argument("--lambda_cost_max", default=1, type=float)
-group_s.add_argument("--ccost_softmax", action="store_true", default=False)
+group_s.add_argument("--teacher_noise", default=0, type=float)
+group_s.add_argument("--ccost_softmax", action="store_false", default=True)
 group_s.add_argument("--ccost_method", type=str, default="mse")
-
-group_mixup = parser.add_argument_group("Mixup parameters")
-group_mixup.add_argument("--mixup", action="store_true", default=False)
-group_mixup.add_argument("--mixup_alpha", type=float, default=0.4)
-group_mixup.add_argument("--mixup_max", action="store_true", default=False)
-group_mixup.add_argument("--mixup_label", action="store_true", default=False)
+group_s.add_argument("--mixup_alpha", default=0.2, type=float)
+group_s.add_argument("--mixup_max", action="store_true", default=False)
 
 group_l = parser.add_argument_group("Logs")
-group_l.add_argument("--checkpoint_root", default="../../model_save/", type=str)
-group_l.add_argument("--tensorboard_root", default="../../tensorboard/", type=str)
+group_l.add_argument("--checkpoint_root", default="../model_save/", type=str)
+group_l.add_argument("--tensorboard_root", default="../tensorboard/", type=str)
 group_l.add_argument("--checkpoint_path", default="mean-teacher_mixup", type=str)
 group_l.add_argument("--tensorboard_path", default="mean-teacher_mixup", type=str)
 group_l.add_argument("--tensorboard_sufix", default="", type=str)
@@ -90,33 +80,37 @@ args=parser.parse_args()
 tensorboard_path = os.path.join(args.tensorboard_root, args.dataset, args.tensorboard_path)
 checkpoint_path = os.path.join(args.checkpoint_root, args.dataset, args.checkpoint_path)
 
+# %% [markdown]
+# ## Basic verification
 
-# In[6]:
+# %%
+available_datasets = ["esc10", "ubs8k", "speechcommand"]
+available_models = ["cnn03", "wideresnet28_2", "wideresnet28_4", "wideresnet28_8"]
+available_ccost_method = ["mse", "js"]
+
+assert args.dataset in available_datasets
+assert args.model in available_models
+assert args.ccost_method in available_ccost_method
 
 
+# %%
 pprint.pprint(vars(args))
 
-
+# %% [markdown]
 # # initialisation
 
-# In[7]:
-
-
+# %%
 reset_seed(args.seed)
 
-
+# %% [markdown]
 # # Prepare the dataset
 
-# In[8]:
-
-
+# %%
 train_transform, val_transform = load_preprocesser(args.dataset, "mean-teacher")
 train_transform
 
 
-# In[9]:
-
-
+# %%
 manager, train_loader, val_loader = load_dataset(
     args.dataset,
     "mean-teacher",
@@ -133,22 +127,18 @@ manager, train_loader, val_loader = load_dataset(
     num_workers=0,
     pin_memory=True,
 
-    verbose = 1
+    verbose = 2
 )
 
 
-# In[10]:
-
-
+# %%
 input_shape = tuple(train_loader._iterables[0].dataset[0][0].shape)
 input_shape
 
-
+# %% [markdown]
 # # Prep model
 
-# In[11]:
-
-
+# %%
 torch.cuda.empty_cache()
 
 model_func = load_model(args.dataset, args.model)
@@ -164,71 +154,36 @@ for p in teacher.parameters():
     p.detach()
 
 
-# In[12]:
-
-
+# %%
 from torchsummary import summary
 
 s = summary(student, input_shape)
 
-
+# %% [markdown]
 # # training parameters
 
-# In[13]:
+# %%
+# tensorboard
+title_element = (args.model, args.supervised_ratio, get_datetime(), model_func.__name__,
+                 args.ccost_method.upper(), args.ccost_softmax, args.teacher_noise)
+tensorboard_title = "%s/%sS/%s_%s_%s_%s-softmax_%s-n" % title_element
 
-
-tensorboard_root=f"{args.model}/{args.supervised_ratio}/{get_datetime()}_{model_func.__name__}"
-checkpoint_root = f"{args.model}/{args.supervised_ratio}/{model_func.__name__}"
-
-# mea teacher parameters
-sufix_title = f'_{args.ema_alpha}-emaa'
-sufix_title += f'_{args.warmup_length}-wl'
-sufix_title += f'_{args.lambda_cost_max}-lccm'
-
-# mixup parameters
-if args.mixup:
-    sufix_title += "_mixup"
-    if args.mixup_max: sufix_title += "-max"
-    if args.mixup_label: sufix_title += "-label"
-    sufix_title += f"-{args.mixup_alpha}-a"
-    
-# ccost function and method
-if args.ccost_method: sufix_title += f"_cc-{args.ccost_method}"
-if args.ccost_softmax: sufix_title += "-SOFTMAX"
-    
-# normal training parameters
-sufix_title += f'_{args.learning_rate}-lr'
-sufix_title += f'_{args.supervised_ratio}-sr'
-sufix_title += f'_{args.nb_epoch}-e'
-sufix_title += f'_{args.batch_size}-bs'
-sufix_title += f'_{args.seed}-seed'
-
-# Custom sufix
-sufix_title += f'_{args.tensorboard_sufix}'
-
-tensorboard_title = tensorboard_root + sufix_title
-checkpoint_title = checkpoint_root + sufix_title
-
-
-# In[14]:
-
+title_element = (args.model, args.supervised_ratio, get_datetime(), model_func.__name__,
+                 args.ccost_method.upper(), args.ccost_softmax, args.teacher_noise)
+checkpoint_title = "%s/%sS/%s_%s_%s_%s-softmax_%s-n" % title_element
 
 tensorboard = mSummaryWriter(log_dir="%s/%s" % (tensorboard_path, tensorboard_title), comment=model_func.__name__)
 print(os.path.join(tensorboard_path, tensorboard_title))
 
-
+# %% [markdown]
 # ## optimizer & callbacks
 
-# In[15]:
-
-
+# %%
 optimizer = load_optimizer(args.dataset, "mean-teacher", student=student, learning_rate=args.learning_rate)
 callbacks = load_callbacks(args.dataset, "mean-teacher", optimizer=optimizer, nb_epoch=args.nb_epoch)
 
 
-# In[16]:
-
-
+# %%
 # losses
 loss_ce = nn.CrossEntropyLoss(reduction="mean") # Supervised loss
 
@@ -248,17 +203,13 @@ def get_lr(optimizer):
         return param_group['lr']
 
 
-# In[17]:
-
-
+# %%
 consistency_cost
 
-
+# %% [markdown]
 # ## Metrics definition
 
-# In[18]:
-
-
+# %%
 def metrics_calculator():
     def c(logits, y):
         with torch.no_grad():
@@ -280,9 +231,7 @@ def metrics_calculator():
     return c
 
 
-# In[19]:
-
-
+# %%
 calc_student_s_metrics = metrics_calculator()
 calc_student_u_metrics = metrics_calculator()
 calc_teacher_s_metrics = metrics_calculator()
@@ -303,27 +252,21 @@ def reset_metrics():
 
 maximum_tracker = track_maximum()
 
-
+# %% [markdown]
 # ## Can resume previous training
 
-# In[20]:
-
-
+# %%
 if args.resume:
     checkpoint.load_last()
 
 
-# In[21]:
-
-
+# %%
 args.resume
 
-
+# %% [markdown]
 # ## training function
 
-# In[22]:
-
-
+# %%
 UNDERLINE_SEQ = "\033[1;4m"
 RESET_SEQ = "\033[0m"
 
@@ -337,9 +280,7 @@ val_form = UNDERLINE_SEQ + value_form + RESET_SEQ
 print(header)
 
 
-# In[23]:
-
-
+# %%
 def update_teacher_model(student_model, teacher_model, alpha, epoch):
     
     # Use the true average until the exponential average is more correct
@@ -348,12 +289,51 @@ def update_teacher_model(student_model, teacher_model, alpha, epoch):
     for param, ema_param in zip(student_model.parameters(), teacher_model.parameters()):
         ema_param.data.mul_(alpha).add_(param.data,  alpha = 1-alpha)
 
-mixup_fn = MixUpBatchShuffle(alpha=args.mixup_alpha, apply_max=args.mixup_max, mix_labels=args.mixup_label)
+
+noise_fn = lambda x: x
+if args.teacher_noise != 0:
+    n_db = args.teacher_noise
+    noise_fn = transforms.Lambda(lambda x: x + (torch.rand(x.shape).cuda() * n_db + n_db))
 
 
-# In[25]:
+# %%
+def get_mixup_fn(alpha: float = 0.4):
+    def mixup(x, y, batch_generator):
+        from torch.distributions.beta import Beta
+
+        if alpha == 0.0:
+            return x, y
+
+        # get a new batch of sample to perform the mixup
+        generator = iter(batch_generator)
+        x_, y_ = generator.next()
+
+        # Toward the end of the epoch, the last batch can be incomplete,
+        # but the newly fetch batch will not be, so we need to trim
+        if x.size()[0] != x_.size()[0]:
+            return x, y
+
+        beta = Beta(alpha, alpha)
+        lambda_ = beta.sample().item() if alpha > 0.0 else 1.0
+
+        if args.mixup_max:
+            lambda_ = max((lambda_, 1 - lambda_))
+
+        mixup.lambda_history.append(lambda_)
+
+        batch_mix = x * lambda_ + x_ * (1.0 - lambda_)
+        # labels_mix = y * lambda_ + y_ * (1.0 - lambda_)
+        labels_mix = y
+
+        return batch_mix, labels_mix
+
+    mixup.lambda_history = []
+    return mixup
+
+mixup_fn = get_mixup_fn(args.mixup_alpha)
 
 
+# %%
 def train(epoch):
     start_time = time.time()
     print("")
@@ -367,11 +347,10 @@ def train(epoch):
         x_s, y_s = S
         x_u, y_u = U
 
-        # Apply mixup if needed, otherwise no mixup.
-        n_x_s, n_y_s, n_x_u, n_y_u = x_s, y_s, x_u, y_u
-        if args.mixup:
-            n_x_s, n_y_s = mixup_fn(x_s, y_s)
-            n_x_u, n_y_u = mixup_fn(x_u, y_u)
+        # Apply mixup
+        # with torch.set_grad_enabled(False):
+        n_x_s, n_y_s = mixup_fn(x_s, y_s, train_loader._iterables[0])
+        n_x_u, n_y_u = mixup_fn(x_u, y_u, train_loader._iterables[1])
         
         n_x_s, n_x_u = n_x_s.cuda(), n_x_u.cuda()
         x_s, x_u = x_s.cuda(), x_u.cuda()
@@ -442,9 +421,7 @@ def train(epoch):
     tensorboard.add_scalar("train/consistency_cost", running_ccost, epoch)
 
 
-# In[26]:
-
-
+# %%
 def val(epoch):
     start_time = time.time()
     print("")
@@ -509,15 +486,11 @@ def val(epoch):
     for c in callbacks:
         c.step()
 
-
+# %% [markdown]
 # # Training
 
-# In[27]:
-
-
+# %%
 print(header)
-if args.resume:
-    checkpoint.load_last()
 
 start_epoch = checkpoint.epoch_counter
 end_epoch = args.nb_epoch
@@ -528,23 +501,17 @@ for e in range(start_epoch, args.nb_epoch):
     
     tensorboard.flush()
 
-
-# ## Save the hyper parameters and the metrics
-
-# In[28]:
-
-
+# %%
 hparams = {}
 for key, value in args.__dict__.items():
     hparams[key] = str(value)
-
+    
 final_metrics = {
-    "max_acc_student": maximum_tracker.max["student_acc"],
-    "max_f1_student": maximum_tracker.max["student_f1"],
-    "max_acc_teacher": maximum_tracker.max["teacher_acc"],
-    "max_f1_teacher": maximum_tracker.max["teacher_f1"],
+    "max_student_acc": maximum_tracker.max["student_acc"],
+    "max_teacher_acc": maximum_tracker.max["teacher_acc"],
+    "max_student_f1": maximum_tracker.max["student_f1"],
+    "max_teacher_f1": maximum_tracker.max["teacher_f1"],
 }
-
 tensorboard.add_hparams(hparams, final_metrics)
 
 tensorboard.flush()

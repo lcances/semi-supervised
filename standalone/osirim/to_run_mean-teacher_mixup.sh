@@ -1,20 +1,20 @@
-c_args="--alpha 0.999 --warmup_length 50 --lambda_ccost_max 3 --learning_rate 0.001"
-c_args="${c_args} --batch_size 64 --epoch 200"
+t_args="--learning_rate 0.001 --batch_size 64 --nb_epoch 200 --supervised_ratio 0.1"
+mt_args="--ema_alpha 0.999 --warmup_length 50 --lambda_cost_max 1 --ccost_method js --ccost_softmax"
+m_args="--mixup --mixup_alpha 0.4"
 
+# small grid search with mixup
+# bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args}
+# bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args}
+# bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} --mixup_max
+# bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} --mixup_label
+# bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} --mixup_label --mixup_max
 
-bash mean-teacher_mixup.sh wideresnet28_2 ubs8k ${c_args} --ratio 0.10 --mixup_alpha 0.4 -C
-
-# c_args="--alpha 0.999 --warmup_length 50 --learning_rate 0.001"
-# c_args="${c_args} --batch_size 64 --epoch 200"
-# c_args="${c_args} --tensorboard_path mean-teacher_mixup_grid-search"
-# c_args="${c_args} --checkpoint_path mean-teacher_mixup_grid-search"
+# Cross validation run on the best
+bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} -C
+#bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} -C
 # 
-# aa=(1 3 5 8 10 15)
+bash mean-teacher_mixup.sh --dataset esc10 --model wideresnet28_2 ${t_args} ${mt_args} -C
+#bash mean-teacher_mixup.sh --dataset esc10 --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} -C
 # 
-# 
-# for i in ${!aa[*]}
-# do
-#         cm=${aa[$i]}
-# 
-#         bash mean-teacher_mixup.sh wideresnet28_2 ubs8k ${c_args} --ratio 0.10 --lambda_ccost_max $cm --mixup_alpha 0
-# done
+bash mean-teacher_mixup.sh --dataset speechcommand --model wideresnet28_2 ${t_args} ${mt_args}
+#bash mean-teacher_mixup.sh --dataset speechcommand --model wideresnet28_2 ${t_args} ${mt_args} ${m_args}

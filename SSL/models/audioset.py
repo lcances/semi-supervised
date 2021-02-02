@@ -32,11 +32,13 @@ def resnet18(num_classes: int = 527, **kwargs):
 class mWideResnet(ResNet):
     def forward(self, x):
         x = x.view(-1, 1, *x.shape[1:])
+#         x = x.repeat(1, 3, 1, 1)
 
         return self._forward_impl(x)
 
 
-def wideresnet28_2(num_classes: int = 527, **kwargs):
+def wideresnet28_2(**kwargs):
+    num_classes = kwargs.get('num_classes', 527)
     return mWideResnet([4, 4, 4], num_classes=num_classes)
 
 
