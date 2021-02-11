@@ -57,8 +57,8 @@ def load_dataset(dataset: str, framework: str, **kwargs):
     import SSL.dataset_loader.audioset_unbalanced as a_unbal
     
     # Default dataset for audioset is the unsupervised version
-    if framework == "audioset":
-        framework = "audioset-unbalanced"
+    if dataset == "audioset":
+        dataset = "audioset-unbalanced"
 
     dataset_mapper = build_mapper(
         {"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, 

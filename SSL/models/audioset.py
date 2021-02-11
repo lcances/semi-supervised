@@ -3,10 +3,12 @@
 # =============================================================================
 import torchvision.models as torch_models
 import torch
+import time
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.resnet import Bottleneck, BasicBlock
 from SSL.models.wideresnet import ResNet
+from torchlibrosa.augmentation import SpecAugmentation
 
 
 class mResnet(torch_models.ResNet):
@@ -128,20 +130,29 @@ class cnn14(nn.Module):
         """
         Input: (batch_size, data_length)"""
         x = input.view(-1, 1, *input.shape[1:])
-
+        
+        x = x.transpose(1, 2)
+        x = self.bn0(x)
+        x = x.transpose(1, 2)
 
         x = self.conv_block1(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
+        
         x = self.conv_block2(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
+        
         x = self.conv_block3(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
+        
         x = self.conv_block4(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
+        
         x = self.conv_block5(x, pool_size=(2, 2), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
+        
         x = self.conv_block6(x, pool_size=(1, 1), pool_type='avg')
         x = F.dropout(x, p=0.2, training=self.training)
+        
         x = torch.mean(x, dim=3)
         
         (x1, _) = torch.max(x, dim=2)
@@ -150,7 +161,7 @@ class cnn14(nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = F.relu_(self.fc1(x))
         embedding = F.dropout(x, p=0.5, training=self.training)
-        clipwise_output = torch.sigmoid(self.fc_audioset(x))
+        clipwise_output = self.fc_audioset(x)
         
         output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
 
@@ -178,6 +189,10 @@ class MobileNetV1(nn.Module):
     def __init__(self, num_classes: int = 527, **kwargs):
         
         super(MobileNetV1, self).__init__()
+        
+         # Spec augmenter
+#         self.spec_augmenter = SpecAugmentation(time_drop_width=64, time_stripes_num=2, 
+#             freq_drop_width=8, freq_stripes_num=2)
 
         self.bn0 = nn.BatchNorm2d(64)
 
@@ -241,10 +256,13 @@ class MobileNetV1(nn.Module):
         Input: (batch_size, data_length)"""
 
         x = input.view(-1, 1, *input.shape[1:])
-
-#         x = x.transpose(1, 3)
+        
+#         x = x.transpose(1, 2)
 #         x = self.bn0(x)
-#         x = x.transpose(1, 3)
+#         x = x.transpose(1, 2)
+        
+#         if self.training:
+#             x = self.spec_augmenter(x)
         
         x = self.features(x)
         x = torch.mean(x, dim=3)
@@ -255,7 +273,7 @@ class MobileNetV1(nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = F.relu_(self.fc1(x))
         embedding = F.dropout(x, p=0.5, training=self.training)
-        clipwise_output = torch.sigmoid(self.fc_audioset(x))
+        clipwise_output = self.fc_audioset(x)
         
         output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
 
@@ -319,6 +337,10 @@ class MobileNetV2(nn.Module):
         super(MobileNetV2, self).__init__()
 
         self.bn0 = nn.BatchNorm2d(64)
+        
+#         # Spec augmenter
+#         self.spec_augmenter = SpecAugmentation(time_drop_width=32, time_stripes_num=1, 
+#             freq_drop_width=4, freq_stripes_num=1)
  
         width_mult=1.
         block = InvertedResidual
@@ -386,13 +408,24 @@ class MobileNetV2(nn.Module):
         init_layer(self.fc1)
         init_layer(self.fc_audioset)
  
-    def forward(self, input, mixup_lambda=None):
+    def forward(self, x, mixup_lambda=None):
         """
         Input: (batch_size, data_length)"""
-        x = input.view(-1, 1, *input.shape[1:])
+        
+        # Dans la definition du model de PANN
+#         x = self.logmel_extractor(x)    # (batch_size, 1, time_steps, mel_bins)
+
+        # Dans ma version
+        x = x.view(-1, 1, *x.shape[1:])   # (batch_size, 1, mel_bins, time_step)
+        
+#         x = x.transpose(1, 2)
+#         x = self.bn0(x)
+#         x = x.transpose(1, 2)
+                
+#         if self.training:
+#             x = self.spec_augmenter(x)
         
         x = self.features(x)
-        
         x = torch.mean(x, dim=3)
         
         (x1, _) = torch.max(x, dim=2)
@@ -401,7 +434,7 @@ class MobileNetV2(nn.Module):
         # x = F.dropout(x, p=0.5, training=self.training)
         x = F.relu_(self.fc1(x))
         embedding = F.dropout(x, p=0.5, training=self.training)
-        clipwise_output = torch.sigmoid(self.fc_audioset(x))
+        clipwise_output = self.fc_audioset(x)
         
 #         output_dict = {'clipwise_output': clipwise_output, 'embedding': embedding}
 

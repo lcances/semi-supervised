@@ -3,8 +3,6 @@ import torch
 import numpy
 import h5py
 import random
-import tqdm
-from tqdm import trange
 from typing import Tuple, Callable, List
 from torch import Tensor
 from torch.nn import Module
@@ -165,7 +163,6 @@ class Audioset(object):
         if self.batch_balancer is not None:
             data, target = self.batch_balancer(data, target)
             
-        
         # 4 - Apply Transformation
         data = self._apply_transform(data)
         
@@ -326,6 +323,8 @@ def batch_balancer(pool_size = 100, batch_size: int = 64):
     else:
         raise ValueError(f"Balancer is configure to work with batch_size equal to {valid_batch_size}")
         
+    print(f'parameters "repeat" set to: {repeat}' )
+    
     def balance(data: list):
         
         def get_first_neg(idx):
@@ -341,7 +340,6 @@ def batch_balancer(pool_size = 100, batch_size: int = 64):
         if len(balance.pool_y) < pool_size:
             balance.pool_x.extend(x)
             balance.pool_y.extend(y)
-            torch.from_numpy(x), torch.from_numpy(y)
         
         # Find the class that is over-represented
         for _ in range(repeat):            
@@ -544,33 +542,26 @@ class BatchSamplerFromList(Sampler):
     def __len__(self) -> int:
         return len(self.batches)
     
-    
-# =============================================================================
-#
-#  FRAMEWORK RELATED METHODS
-#
-# =============================================================================
-
 def get_supervised(version: str = "unbalanced", **kwargs):
     def supervised(
         dataset_root: str,
         rdcc_nbytes: int = 512*1024**2,
         data_shape: tuple = (64, 500, ),
         data_key: str = "data",
-    
+
         train_transform: Module = None,
         val_transform: Module = None,
-    
+
         batch_size: int = 64,
         supervised_ratio: float = 1.0,
         unsupervised_ratio: float = None,
         balance: bool = True,
-    
+
         num_workers: int = 10,
         pin_memory: bool = False,
-    
+
         **kwargs) -> Tuple[DataLoader, DataLoader]:
-    
+
         #Dataset parameters
         d_params = dict(
             root="/projets/samova/leocances/AudioSet/hdfs/mel_64x500",
@@ -587,7 +578,7 @@ def get_supervised(version: str = "unbalanced", **kwargs):
 
         balancer = None
         if balance:
-            balancer = batch_balancer(batch_size=batch_size, pool_size=batch_size*4)
+            balancer = batch_balancer(batch_size=batch_size, pool_size=batch_size)
 
 
         # validation subset
@@ -600,7 +591,7 @@ def get_supervised(version: str = "unbalanced", **kwargs):
         train_sampler = ChunkAlignSampler(train_dataset, batch_size=batch_size, shuffle=True)
 
         if supervised_ratio == 1.0:
-            s_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=balancer, **l_params)
+            s_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=balancer,  **l_params)
 
         else:
             if unsupervised_ratio is None:
@@ -616,8 +607,8 @@ def get_supervised(version: str = "unbalanced", **kwargs):
             u_batch_sampler = BatchSamplerFromList(u_batches)
 
             s_train_loader = DataLoader(train_dataset, batch_sampler=s_batch_sampler, collate_fn=balancer, **l_params)
-            u_train_loader = DataLoader(train_dataset, batch_sampler=u_batch_sampler, collate_fn=balancer, **l_params)
-            
+            u_train_loader = DataLoader(train_dataset, batch_sampler=u_batch_sampler, **l_params)
+
 #             train_loader = ZipCycle([s_train_loader, u_train_loader])
 
 
