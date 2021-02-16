@@ -1,8 +1,5 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # import
-# In[2]:
+import sys
+sys.executable
 
 
 # In[3]:
@@ -13,6 +10,7 @@ os.environ["MKL_NUM_THREADS"] = "2"
 os.environ["NUMEXPR_NU M_THREADS"] = "2"
 os.environ["OMP_NUM_THREADS"] = "2"
 import time
+from typing import Union
 
 import numpy
 import torch
@@ -26,20 +24,26 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
-from torchlibrosa.augmentation import SpecAugmentation
+
+# from torchlibrosa.augmentation import SpecAugmentation
+
+
+# In[4]:
+
 
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
-from SSL.util.mixup import MixUpBatchShuffle
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, DotDict
+from SSL.util.mixup import MixUpBatchShuffle
 
-from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage
+from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage, Metrics
+from sklearn import metrics
 
 
 # # Arguments
 
-# In[1]:
+# In[5]:
 
 
 import argparse
@@ -51,9 +55,9 @@ parser.add_argument("-D", "--dataset", default="audioset-unbalanced", type=str)
 group_t = parser.add_argument_group("Commun parameters")
 group_t.add_argument("-m", "--model", default="wideresnet28_2", type=str)
 group_t.add_argument("--supervised_ratio", default=1.0, type=float)
-group_t.add_argument("--batch_size", default=128,type=int)
+group_t.add_argument("--batch_size", default=32, type=int)
 group_t.add_argument("--nb_epoch", default=15, type=int)
-group_t.add_argument("--learning_rate", default=0.001, type=float)
+group_t.add_argument("--learning_rate", default=0.003, type=float)
 group_t.add_argument("--resume", action="store_true", default=False)
 group_t.add_argument("--seed", default=1234, type=int)
 
@@ -66,9 +70,9 @@ group_mixup.add_argument("--mixup_label", action="store_true", default=False)
 group_sa = parser.add_argument_group("Spec augmentation")
 group_sa.add_argument("--specAugment", action="store_true", default=False)
 group_sa.add_argument("--sa_time_drop_width", type=int, default=32)
-group_sa.add_argument('--sa_time_stripes_mum', type=int, default=2)
+group_sa.add_argument('--sa_time_stripes_num', type=int, default=1)
 group_sa.add_argument("--sa_freq_drop_width", type=int, default=4)
-group_sa.add_argument("--sa_freq_stripes_num", type=int, default=2)
+group_sa.add_argument("--sa_freq_stripes_num", type=int, default=1)
 
 group_u = parser.add_argument_group("Datasets parameters")
 group_u.add_argument("-t", "--train_folds", nargs="+", default=[1, 2, 3, 4], type=int)
@@ -81,24 +85,13 @@ group_l.add_argument("--checkpoint_path", default="supervised", type=str)
 group_l.add_argument("--tensorboard_path", default="supervised", type=str)
 group_l.add_argument("--log_suffix", default="", type=str)
 
-parser.add_argument("-N", "--nb_gpu", default=2, type=int)
+parser.add_argument("-N", "--nb_gpu", default=1, type=int)
 
 
 args = parser.parse_args()
 
 args.tensorboard_path = os.path.join(args.tensorboard_root, args.dataset, args.tensorboard_path)
 args.checkpoint_path = os.path.join(args.checkpoint_root, args.dataset, args.checkpoint_path)
-
-
-# In[2]:
-
-
-vars(args)
-
-
-# # initialisation
-
-# In[8]:
 
 
 reset_seed(args.seed)
@@ -114,13 +107,14 @@ reset_seed(args.seed)
 #     verbose = 2
 # )
 
-# In[9]:
+# In[8]:
 
 
 # from SSL.trainers.esc import SupervisedTrainer
 from SSL.trainers.trainers import Trainer
 
 class SupervisedTrainer(Trainer):
+    
     def __init__(self, model: str, dataset: str):
         super().__init__(model, "supervised", dataset)
 
@@ -129,13 +123,13 @@ trainer = SupervisedTrainer(args.model, args.dataset)
 
 # # Prepare the dataset
 
-# In[10]:
+# In[9]:
 
 
 trainer.load_transforms()
 
 
-# In[11]:
+# In[10]:
 
 
 parameters = dict(
@@ -143,7 +137,7 @@ parameters = dict(
 
     dataset_root = args.dataset_root,
     supervised_ratio = args.supervised_ratio,
-    batch_size = args.batch_size * args.nb_gpu,
+    batch_size = args.batch_size,
     train_folds = args.train_folds,
     val_folds = args.val_folds,
     
@@ -158,7 +152,7 @@ trainer.load_dataset(parameters)
 
 # # Prep model
 
-# In[15]:
+# In[11]:
 
 
 from types import MethodType
@@ -177,10 +171,10 @@ def create_model(self, nb_gpu: int = 1):
     )
     self.model = self.model.cuda()
     
+    s = summary(self.model, self.input_shape)
+    
     if nb_gpu > 1:
         self.model = nn.DataParallel(self.model)
-
-    s = summary(self.model, self.input_shape)
     
 trainer.create_model = MethodType(create_model, trainer)
 trainer.create_model(args.nb_gpu)
@@ -190,7 +184,7 @@ trainer.create_model(args.nb_gpu)
 
 # ## Losses
 
-# In[17]:
+# In[12]:
 
 
 def init_loss(self):
@@ -199,7 +193,7 @@ def init_loss(self):
 trainer.init_loss = MethodType(init_loss, trainer)
 
 
-# In[18]:
+# In[13]:
 
 
 trainer.init_loss()
@@ -207,7 +201,7 @@ trainer.init_loss()
 
 # ## optimizer & callbacks
 
-# In[19]:
+# In[14]:
 
 
 parameters=DotDict(
@@ -216,7 +210,7 @@ parameters=DotDict(
 trainer.init_optimizer(parameters)
 
 
-# In[20]:
+# In[15]:
 
 
 parameters=DotDict(
@@ -228,38 +222,92 @@ trainer.init_callbacks(parameters)
 
 # # Logs and checkpoint
 
-# In[21]:
+# In[16]:
+
+
+# Prepare suffix
+# normale training parameters
+sufix_title = ''
+sufix_title += f'_{args.learning_rate}-lr'
+sufix_title += f'_{args.supervised_ratio}-sr'
+sufix_title += f'_{args.nb_epoch}-e'
+sufix_title += f'_{args.batch_size}-bs'
+sufix_title += f'_{args.seed}-seed'
+
+# mixup parameters
+if args.mixup:
+    sufix_title += '_mixup'
+    if args.mixup_max: sufix_title += "-max"
+    if args.mixup_label: sufix_title += "-label"
+    sufix_title += f"-{args.mixup_alpha}-a"
+    
+# SpecAugment parameters
+if args.specAugment:
+    sufix_title += '_specAugment'
+    sufix_title += f'-{args.sa_time_drop_width}tdw'
+    sufix_title += f'-{args.sa_time_stripes_num}tsn'
+    sufix_title += f'-{args.sa_freq_drop_width}fdw'
+    sufix_title += f'-{args.sa_freq_stripes_num}fsn'
+
+
+# In[17]:
+
+
+sufix_title
+
+
+# In[18]:
 
 
 # Logs
 parameters=DotDict(
     supervised_ratio=args.supervised_ratio
 )
-trainer.init_logs(parameters, suffix=args.log_suffix)
+
+trainer.init_logs(parameters, suffix=sufix_title)
 
 
-# In[22]:
+# In[19]:
 
 
 # Checkpoint
 parameters=DotDict(
     supervised_ratio=args.supervised_ratio
 )
-trainer.init_checkpoint(parameters, suffix=args.log_suffix)
+trainer.init_checkpoint(parameters, suffix=sufix_title)
 
 
 # ## Metrics
 
-# In[23]:
+# In[20]:
 
 
 # Metrics
+from metric_utils.metrics import Metrics
+from sklearn import metrics
+
+
+class MAP(Metrics):
+    def __init__(self, epsilon=1e-10):
+        super().__init__(epsilon)
+
+    def __call__(self, y_pred, y_true):
+        super().__call__(y_pred, y_true)
+        aps = metrics.average_precision_score(y_true, y_pred, average=None)
+        aps = numpy.nan_to_num(aps)
+        
+        self.values.append(aps.mean())
+        return self
+
 def init_metrics(self):
     self.metrics = DotDict(
         fscore_fn=FScore(),
         acc_fn=BinaryAccuracy(),
         avg_fn=ContinueAverage(),
+        mAP_fn=MAP()
     )
+    self.time_average_fn = ContinueAverage()
+    
     self.maximum_tracker = track_maximum()
 
 trainer.init_metrics = MethodType(init_metrics, trainer)
@@ -268,32 +316,121 @@ trainer.init_metrics()
 
 # ## training function
 
-# In[24]:
+# In[21]:
 
 
 def set_printing_form(self):
     UNDERLINE_SEQ = "\033[1;4m"
     RESET_SEQ = "\033[0m"
 
-    header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<8.8} {:<6.6} - {:<9.9} {:<12.12}| {:<9.9}- {:<6.6}"
-    value_form  = "{:<8.8} {:<6} - {:<6} - {:<8.8} {:<6.4f} - {:<9.9} {:<10.4f}| {:<9.4f}- {:<6.4f}"
+    header_form = "Type            Epoch -       /       - Losses: bce       - Metrics: acc         F1           mAP           - Remaining time "
+    header_form = "{:<16.16} {:<5.5} - {:<5.5} / {:<5.5} - {:<7.7} {:<9.9} - {:<8.8} {:<12.12} {:<12.12} {:<12.12} - {:<6.6}"
+    value_form  = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
 
     self.header = header_form.format(
-        ".               ", "Epoch", "%", "Losses:", "ce", "metrics: ", "acc", "F1 ","Time"
+        ".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc", "F1", "mAP", "Time"
     )
 
     self.train_form = value_form
     self.val_form = UNDERLINE_SEQ + value_form + RESET_SEQ
+    
+trainer.set_printing_form = MethodType(set_printing_form, trainer)
 
 
 # # init mixup and SpecAugment
 
-# In[25]:
+# In[22]:
 
 
-# Spec augmenter
+import numpy as np
+import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class DropStripes(nn.Module):
+    def __init__(self, dim, drop_width, stripes_num):
+        """Drop stripes. 
+        Args:
+          dim: int, dimension along which to drop
+          drop_width: int, maximum width of stripes to drop
+          stripes_num: int, how many stripes to drop
+        """
+        super(DropStripes, self).__init__()
+
+        assert dim in [1, 2]    # dim 2: frequency; dim 3: time
+
+        self.dim = dim
+        self.drop_width = drop_width
+        self.stripes_num = stripes_num
+
+    def forward(self, input):
+        """input: (batch_size, channels, time_steps, freq_bins)"""
+
+        assert input.ndimension() == 3
+
+        if self.training is False:
+            return input
+
+        else:
+            batch_size = input.shape[0]
+            total_width = input.shape[self.dim]
+
+            for n in range(batch_size):
+                self.transform_slice(input[n], total_width)
+
+            return input
+
+
+    def transform_slice(self, e, total_width):
+        """e: (channels, time_steps, freq_bins)"""
+
+        for _ in range(self.stripes_num):
+            distance = torch.randint(low=0, high=self.drop_width, size=(1,))[0]
+            bgn = torch.randint(low=0, high=total_width - distance, size=(1,))[0]
+
+            if self.dim == 1:
+                e[bgn : bgn + distance, :] = 0
+            elif self.dim == 2:
+                e[:, bgn : bgn + distance] = 0
+
+
+class SpecAugmentation(nn.Module):
+    def __init__(self, time_drop_width, time_stripes_num, freq_drop_width, 
+        freq_stripes_num):
+        """Spec augmetation. 
+        [ref] Park, D.S., Chan, W., Zhang, Y., Chiu, C.C., Zoph, B., Cubuk, E.D. 
+        and Le, Q.V., 2019. Specaugment: A simple data augmentation method 
+        for automatic speech recognition. arXiv preprint arXiv:1904.08779.
+        Args:
+          time_drop_width: int
+          time_stripes_num: int
+          freq_drop_width: int
+          freq_stripes_num: int
+        """
+
+        super(SpecAugmentation, self).__init__()
+
+        self.time_dropper = DropStripes(dim=2, drop_width=time_drop_width, 
+            stripes_num=time_stripes_num)
+
+        self.freq_dropper = DropStripes(dim=1, drop_width=freq_drop_width, 
+            stripes_num=freq_stripes_num)
+
+    def forward(self, input):
+        x = self.time_dropper(input)
+        x = self.freq_dropper(x)
+        return x
+
+
+# In[23]:
+
+
+# # Spec augmenter
 spec_augmenter = SpecAugmentation(time_drop_width=args.sa_time_drop_width,
-                                  time_stripes_num=args.sa_time_stripes_mum,
+                                  time_stripes_num=args.sa_time_stripes_num,
                                   freq_drop_width=args.sa_freq_drop_width,
                                   freq_stripes_num=args.sa_freq_stripes_num)
 
@@ -301,34 +438,49 @@ spec_augmenter = SpecAugmentation(time_drop_width=args.sa_time_drop_width,
 mixup_fn = MixUpBatchShuffle(alpha=args.mixup_alpha, apply_max=args.mixup_max, mix_labels=args.mixup_label)
 
 
+# In[24]:
+
 
 batch_summed = []
 
 
-def train_fn(self, epoch: int):
+# def calc_class_dist(y):
+#     with torch.set_grad_enabled(False):
+#         summed = torch.sum(y, axis=0)
+#         summed = summed[summed > 0]
+#         if len(summed) <= 0:
+#             return False
+
+#         ratio = min(summed) / max(summed)
+#         if ratio < 0.16:
+#             return False
+        
+#         return True
+
+def train_fn(self, epoch: int) -> Union[float, float]:
     # aliases
     M = self.metrics
     T = self.tensorboard.add_scalar
     nb_batch = len(self.train_loader)
 
-    start_time = time.time()
     print("")
 
     self.reset_metrics()
+    self.time_average_fn.reset()
     self.model.train()
 
     for i, (X, y) in enumerate(self.train_loader):
-        
-        if args.specAugment:
-            X = X.view(-1, 1, *X.shape[1:])
-            X = spec_augmenter(X)
-            X = X.squeeze(1)
-
-        if args.mixup:
-            X, y = mixup_fn(X, y)
+        start_time = time.time()
+        y_ = y.detach().clone() # keep a copy outside the graph and in cpu to compute the mAP
         
         X = X.cuda().float()
         y = y.cuda().float()
+        
+        if args.mixup:
+            X, y = mixup_fn(X, y)
+            
+        if args.specAugment:
+            X = spec_augmenter(X)
         
         logits = self.model(X)
         loss = self.loss_ce(logits, y)
@@ -338,32 +490,41 @@ def train_fn(self, epoch: int):
         self.optimizer.step()
 
         with torch.set_grad_enabled(False):
-            acc = M.acc_fn(logits, y).mean
-            fscore = M.fscore_fn(logits, y).mean
-            avg_ce = M.avg_fn(loss.item()).mean
             
-            summed = torch.sum(y, axis=0)
-            batch_summed.append(summed)
+            pred = torch.sigmoid(logits)
+            
+            fscore = M.fscore_fn(pred, y)
+            acc = M.acc_fn(pred, y)
+            mAP = M.mAP_fn(pred.cpu().reshape(-1), y_.reshape(-1))
+            avg_ce = M.avg_fn(loss.item())
 
+            end_time = time.time()
+            running_mean_time = self.time_average_fn(end_time - start_time)
+            
             # logs
             print(self.train_form.format(
                 "Training: ",
                 epoch + 1,
-                int(100 * (i + 1) / nb_batch),
-                "", avg_ce,
-                "", acc, fscore,
-                time.time() - start_time
+                i, nb_batch,
+                "", avg_ce.value,
+                "", acc.mean, fscore.mean, mAP.mean,
+                (nb_batch - i) * running_mean_time.mean
             ), end="\r")
 
-    T("train/Lce", avg_ce, epoch)
-    T("train/f1", fscore, epoch)
-    T("train/acc", acc, epoch)
+        T("train/Lce", avg_ce.mean, epoch * nb_batch + i)
+        T("train/f1", fscore.mean, epoch * nb_batch + i)
+        T("train/acc", acc.mean, epoch * nb_batch + i)
+        T("train/mAO", mAP.mean, epoch * nb_batch + i)
+    
+    return avg_ce.mean, fscore.mean
+
+trainer.train_fn = MethodType(train_fn, trainer)
 
 
-# In[27]:
+# In[25]:
 
 
-def val_fn(self, epoch: int):
+def val_fn(self, epoch: int)  -> Union[float, float]:
     # aliases
     M = self.metrics
     T = self.tensorboard.add_scalar
@@ -383,88 +544,34 @@ def val_fn(self, epoch: int):
             logits = self.model(X)
             loss = self.loss_ce(logits, y)
 
-            acc = M.acc_fn(logits, y).mean
-            fscore = M.fscore_fn(logits, y).mean
-            avg_ce = M.avg_fn(loss.item()).mean
+            pred = torch.sigmoid(logits)
+            fscore = M.fscore_fn(pred, y)            
+            acc = M.acc_fn(pred, y)
+            mAP = M.mAP_fn(pred.cpu().reshape(-1), y.cpu().reshape(-1))
+            avg_ce = M.avg_fn(loss.item())
 
             # logs
             print(self.val_form.format(
                 "Validation: ",
                 epoch + 1,
-                int(100 * (i + 1) / nb_batch),
-                "", avg_ce,
-                "", acc, fscore,
+                i, nb_batch,
+                "", avg_ce.mean,
+                "", acc.mean, fscore.mean, mAP.mean,
                 time.time() - start_time
             ), end="\r")
 
-    T("val/Lce", avg_ce, epoch)
-    T("val/f1", fscore, epoch)
-    T("val/acc", acc, epoch)
+    T("val/Lce", avg_ce.mean, epoch)
+    T("val/f1", fscore.mean, epoch)
+    T("val/acc", acc.mean, epoch)
 
     T("hyperparameters/learning_rate", self._get_lr(), epoch)
 
-    T("max/acc", self.maximum_tracker("acc", acc), epoch)
-    T("max/f1", self.maximum_tracker("f1", fscore), epoch)
-
-    self.checkpoint.step(acc)
-    for c in self.callbacks:
-        c.step()
-        pass
-
-
-# In[28]:
-
-
-def test_fn(self):
-    # aliases
-    M = self.metrics
-    T = self.tensorboard.add_scalar
-    nb_batch = len(self.val_loader)
-
-    # Load best epoch
-    self.checkpoint.load_best()
-
-    start_time = time.time()
-    print("")
-
-    self.reset_metrics()
-    self.model.eval()
-
-    with torch.set_grad_enabled(False):
-        for i, (X, y) in enumerate(self.test_loader):
-            X = X.cuda()
-            y = y.cuda()
-
-            logits = self.model(X)
-            loss = self.loss_ce(logits, y)
-
-            acc = M.acc_fn(pred_arg, y).mean
-            fscore = M.fscore_fn(pred, y).mean
-            avg_ce = M.avg_fn(loss.item()).mean
-
-            # logs
-            print(self.val_form.format(
-                "Testing: ",
-                1,
-                int(100 * (i + 1) / nb_batch),
-                "", avg_ce,
-                "", acc, fscore,
-                time.time() - start_time
-            ), end="\r")
-
-
-# In[29]:
-
-
-trainer.set_printing_form = MethodType(set_printing_form, trainer)
-trainer.train_fn = MethodType(train_fn, trainer)
+    T("max/acc", self.maximum_tracker("acc", acc.mean), epoch)
+    T("max/f1", self.maximum_tracker("f1", fscore.mean), epoch)
+    
+    return avg_ce, fscore
+    
 trainer.val_fn = MethodType(val_fn, trainer)
-trainer.test_fn = MethodType(test_fn, trainer)
-
-
-# # Training
-
-# In[30]:
 
 
 # Resume if wish
@@ -472,7 +579,7 @@ if args.resume:
     trainer.checkpoint.load_last()
 
 
-# In[31]:
+# In[ ]:
 
 
 # Fit function
@@ -483,88 +590,17 @@ start_epoch = trainer.checkpoint.epoch_counter
 end_epoch = args.nb_epoch
 
 for e in range(start_epoch, args.nb_epoch):
-    trainer.train_fn(e)
-    trainer.val_fn(e)
+    # Perform train and validation step
+    train_avg_ce, train_fscore = trainer.train_fn(e)
+    val_avg_ce, val_fscore = trainer.val_fn(e)
+    
+    # checkpoint save depend on fscore value
+    trainer.checkpoint.step(val_fscore.mean)
+    
+    # Apply the different callbacks
+    for c in trainer.callbacks:
+        c.step()
     
     trainer.tensorboard.flush()
-
-
-# # Evaluate
-total_pred = []
-total_targets = []
-
-trainer.model.eval()
-
-nb_batch = len(trainer.val_loader)
-
-S = nn.Sigmoid()
-
-with torch.set_grad_enabled(False):
-    for i, (X, y) in enumerate(trainer.val_loader):
-        X = X.cuda().float()
-        y = y.cuda().float()
-
-        logits = trainer.model(X)
-        
-        total_pred.append(S(logits).cpu())
-        total_targets.append(y.cpu())
-        
-        print("%d / %d" % (i, nb_batch), end="\r")
-
-total_pred_ = numpy.vstack(total_pred)
-total_targets_ = numpy.vstack(total_targets)
-
-# # Compute mAP
-mAP = metrics.average_precision_score(total_targets_, total_pred_, average=None)
-
-# # Compute mAUC
-from sklearn import metrics
-import tqdm
-
-metrics_auc = []
-for i in tqdm.tqdm(range(527)):
-    y = total_targets_[:,i]
-    pred = total_pred_[:,i]
-
-    fpr, tpr, thresholds = metrics.roc_curve(y, pred)
-    metrics_auc.append(metrics.auc(fpr, tpr))
-
-mAUC = metrics_auc
-
-# # Computing d-prime
-# https://stats.stackexchange.com/questions/492673/understanding-and-implementing-the-dprime-measure-in-python
-
-from scipy.stats import norm
-Z = norm.ppf
-
-def calc_dprime(y_true, y_pred):
-    return numpy.sqrt(2) * Z(metrics.roc_auc_score(y_true,y_pred))
-
-dprimes = []
-for i in tqdm.tqdm(range(527)):
-    y = total_targets[:,i]
-    pred = total_pred[:,i]
-
-    dprimes.append(calc_dprime(y, pred))
-
-dprimes = numpy.mean(dprimes)
-
-# Save all the parameters
-tensorboard_params = {}
-for key, value in args.__dict__.items():
-    tensorboard_params[key] = str(value)
-trainer.tensorboard.add_hparams(tensorboard_params, {})
-
-##########
-hparams = {}
-for key, value in args.__dict__.items():
-    hparams[key] = str(value)
-
-final_metrics = {
-    "mAP": mAP.mean(),
-    "mAUC": numpy.mean(metrics_auc),
-    "mDPrime": numpy.mean(dprimes),
-}
-tensorboard.add_hparams(hparams, final_metrics)
-tensorboard.flush()
-tensorboard.close()
+    
+trainer.save_hparams(vars(args))

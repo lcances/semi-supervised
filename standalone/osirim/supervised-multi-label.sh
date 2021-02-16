@@ -61,24 +61,27 @@ NB_GPU=1
 PARTITION="GPUNodes"
 
 # training parameters
-MODEL=cnn03
+MODEL=wideresnet28_2
 DATASET="ubs8k"
 RATIO=1.0
-ALPHA=0.4
 NB_EPOCH=200
 BATCH_SIZE=64
 LR=0.003
 SEED=1234
 
-SA_TDW=32
-SA_TSN=2
-SA_FDW=4
-SA_FSN=2
+# MixUp default parameters
+ALPHA=0.4
+
+# Spec augment default parameters
+SA_TDW=""
+SA_TSN=""
+SA_FDW=""
+SA_FSN=""
 
 FLAG=""
 F_MIXUP=""
 F_SA=""
-NAME_EXTRA=""
+EXTRA_NAME=""
 
 # Parse the optional parameters
 while :; do
@@ -86,31 +89,34 @@ while :; do
     if ! [ "$1" ]; then break; fi
 
     case $1 in
+        # Osirim computation parameters
+        -n | --node)      NODE=$(parse_long $2); shift; shift;;
+        -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
+        -g | --nb_gpu)    NB_GPU=$(parse_long $2); shift; shift;;
+        -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
+        
+        # Common training parameters
         -R | --resume)      FLAG="${FLAG} --resume"; shift;;
-
-        --dataset) DATASET=$(parse_long $2); shift; shift;;
-        --model) MODEL=$(parse_long $2); shift; shift;;
+        --dataset)          DATASET=$(parse_long $2); shift; shift;;
+        --model)            MODEL=$(parse_long $2); shift; shift;;
         --supervised_ratio) RATIO=$(parse_long $2); shift; shift;;
         --nb_epoch)         NB_EPOCH=$(parse_long $2); shift; shift;;
         --learning_rate)    LR=$(parse_long $2); shift; shift;;
         --batch_size)       BATCH_SIZE=$(parse_long $2); shift; shift;;
         --seed)             SEED=$(parse_long $2); shift; shift;;
         
-        -n | --node) NODE=$(parse_long $2); shift; shift;;
-        -N | --nb_task) NB_TASK=$(parse_long $2); shift; shift;;
-        -g | --nb_gpu) NB_GPU=$(parse_long $2); shift; shift;;
-        -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
+        # MixUp parameters
+        --mixup)         FLAG="${FLAG} --mixup";       EXTRA_NAME="${EXTRA_NAME}_mixup"; shift;;
+        --mixup_alpha)   M_ALPHA=$(parse_long $2);     EXTRA_NAME="${EXTRA_NAME}-${M_ALPHA}a"; shift; shift;;
+        --mixup_max)     FLAG="${FLAG} --mixup_max";   EXTRA_NAME="${EXTRA_NAME}-max"; shift;;
+        --mixup_label)   FLAG="${FLAG} --mixup_label"; EXTRA_NAME="${EXTRA_NAME}-label"; shift;;
         
-        --mixup) FLAG="${FLAG} --mixup"; F_MIXUP="_mixup"; shift;;
-        --mixup_alpha) ALPHA=$(parse_long $2); shift; shift;;
-        --mixup_max) FLAG="${FLAG} --mixup_max"; shift;;
-        --mixup_label) FLAG="${FLAG} --mixup_label"; shift;;
-        
-        --specAugment) FLAG="${FLAG} --specAugment"; F_SA="_specAugment" shift;;
-        --sa_time_drop_width) SA_TDW=$(parse_long $2); shift; shift;;
-        --sa_time_stripes_num) SA_TSN=$(parse_long $2); shift; shift;;
-        --sa_freq_drop_width) SA_FDW=$(parse_long $2); shift; shift;;
-        --sa_freq_stripes_num) SA_FSN=$(parse_long $2); shift; shift;;
+        # SpecAugment paramters
+        --specAugment)         FLAG="${FLAG} --specAugment";  EXTRA_NAME="${EXTRA_NAME}_SpecAugment"; shift;;
+        --sa_time_drop_width)  SA_TDW=$(parse_long $2);       EXTRA_NAME="${EXTRA_NAME}-${SA_TDW}tdw"; shift; shift;;
+        --sa_time_stripes_num) SA_TSN=$(parse_long $2);       EXTRA_NAME="${EXTRA_NAME}-${SA_TSN}tsn"; shift; shift;;
+        --sa_freq_drop_width)  SA_FDW=$(parse_long $2);       EXTRA_NAME="${EXTRA_NAME}-${SA_FDW}fdw"; shift; shift;;
+        --sa_freq_stripes_num) SA_FSN=$(parse_long $2);       EXTRA_NAME="${EXTRA_NAME}-${SA_FSN}fsn"; shift; shift;;
 
         -?*) echo "WARN: unknown option" $1 >&2
     esac
@@ -126,8 +132,11 @@ fi
 
 # ___________________________________________________________________________________ #
 LOG_DIR="logs"
-EXTRA_NAME="${F_MIXUP}${F_SA}"
-SBATCH_JOB_NAME=sup_${DATASET}_${MODEL}_${RATIO}S_${EXTRA_NAME}
+SBATCH_JOB_NAME=sup_${DATASET}_${MODEL}_${RATIO}S${EXTRA_NAME}
+
+echo logs are at:
+echo $LOG_DIR/$SBATCH_JOB_NAME
+
 
 cat << EOT > .sbatch_tmp.sh
 #!/bin/bash
@@ -148,25 +157,34 @@ container=/users/samova/lcances/container/pytorch-dev.sif
 python=/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python
 script=../supervised/supervised_multi-label.py
 
+source bash_scripts/add_option.sh
+
 # -------- hardware parameters --------
 common_args="\${common_args} --nb_gpu ${NB_GPU}"
 
 # -------- dataset & model ------
-common_args="\${common_args} --dataset ${DATASET}"
-common_args="\${common_args} --model ${MODEL}"
+common_args=\$(append "\$common_args" $DATASET '--dataset')
+common_args=\$(append "\$common_args" $MODEL '--model')
 
 # -------- training common_args --------
-common_args="\${common_args} --supervised_ratio ${RATIO}"
-common_args="\${common_args} --nb_epoch ${NB_EPOCH}"
-common_args="\${common_args} --learning_rate ${LR}"
-common_args="\${common_args} --batch_size ${BATCH_SIZE}"
-common_args="\${common_args} --seed ${SEED}"
+common_args=\$(append "\$common_args" $SUPERVISED_RATIO '--supervised_ratio')
+common_args=\$(append "\$common_args" $NB_EPOCH '--nb_epoch')
+common_args=\$(append "\$common_args" $LR '--learning_rate')
+common_args=\$(append "\$common_args" $BATCH_SIZE '--batch_size')
+common_args=\$(append "\$common_args" $SEED '--seed')
 
-# ------- mixup parameters --------
-common_args="\${common_args} --mixup_alpha ${ALPHA}"
+# -------- mixup parameters --------
+common_args=\$(append "\$common_args" $M_ALPHA '--mixup_alpha')
 
 # -------- flags --------
-common_args="\${common_args} $FLAG"
+# should contain mixup_max, mixup_label, ccost_softmax
+common_args="\${common_args} ${FLAG}"
+
+# -------- SpecAugment parameters --------
+common_args=\$(append "\$common_args" $SA_TDW '--sa_time_drop_width')
+common_args=\$(append "\$common_args" $SA_TSN '--sa_time_stripes_num')
+common_args=\$(append "\$common_args" $SA_FDW '--sa_freq_drop_width')
+common_args=\$(append "\$common_args" $SA_FSN '--sa_freq_stripes_num')
 
 # -------- log sufix --------
 if [ -n "${EXTRA_NAME}" ]; then
@@ -180,3 +198,4 @@ EOT
 
 echo "sbatch store in .sbatch_tmp.sh"
 sbatch .sbatch_tmp.sh
+#bash .sbatch_tmp.sh
