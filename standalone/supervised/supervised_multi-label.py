@@ -563,11 +563,13 @@ def val_fn(self, epoch: int)  -> Union[float, float]:
     T("val/Lce", avg_ce.mean, epoch)
     T("val/f1", fscore.mean, epoch)
     T("val/acc", acc.mean, epoch)
+    T('val/mAP', mAP.mean, epoch)
 
     T("hyperparameters/learning_rate", self._get_lr(), epoch)
 
     T("max/acc", self.maximum_tracker("acc", acc.mean), epoch)
     T("max/f1", self.maximum_tracker("f1", fscore.mean), epoch)
+    T('max/mAP', self.maximum_tracker('mAP', mAP.mean), epoch)
     
     return avg_ce, fscore
     
