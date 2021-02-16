@@ -25,6 +25,7 @@ function show_help {
     echo "    -n | --node NODE              On which node the job will be executed"
     echo "    -N | --nb_task NB TASK        On many parallel task"
     echo "    -g | --nb_gpu  NB GPU         On how many gpu this training should be done"
+    echo "    -c | --nb_cpu  NB CPU         On how many CPU this training should be done"
     echo "    -p | --partition PARTITION    On which partition the script will be executed"
     echo ""
     echo "Miscalleous arguments"
@@ -58,6 +59,7 @@ function show_help {
 NODE=" "
 NB_TASK=1
 NB_GPU=1
+NB_CPU=5
 PARTITION="GPUNodes"
 
 # training parameters
@@ -93,6 +95,7 @@ while :; do
         -n | --node)      NODE=$(parse_long $2); shift; shift;;
         -N | --nb_task)   NB_TASK=$(parse_long $2); shift; shift;;
         -g | --nb_gpu)    NB_GPU=$(parse_long $2); shift; shift;;
+        -c | --nb_cpu)    NB_CPU=$(parse_long $2); shift; shift;;
         -p | --partition) PARTITION=$(parse_long $2); shift; shift;;
         
         # Common training parameters
@@ -144,7 +147,7 @@ cat << EOT > .sbatch_tmp.sh
 #SBATCH --output=${LOG_DIR}/${SBATCH_JOB_NAME}.out
 #SBATCH --error=${LOG_DIR}/${SBATCH_JOB_NAME}.err
 #SBATCH --ntasks=$NB_TASK
-#SBATCH --cpus-per-task=5
+#SBATCH --cpus-per-task=$NB_CPU
 #SBATCH --partition=$PARTITION
 #SBATCH --gres=gpu:$NB_GPU
 #SBATCH --gres-flags=enforce-binding
@@ -161,6 +164,7 @@ source bash_scripts/add_option.sh
 
 # -------- hardware parameters --------
 common_args="\${common_args} --nb_gpu ${NB_GPU}"
+common_args="\${common_args} --nb_cpu ${NB_CPU}"
 
 # -------- dataset & model ------
 common_args=\$(append "\$common_args" $DATASET '--dataset')
