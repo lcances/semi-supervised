@@ -86,6 +86,7 @@ group_l.add_argument("--tensorboard_path", default="supervised", type=str)
 group_l.add_argument("--log_suffix", default="", type=str)
 
 parser.add_argument("-N", "--nb_gpu", default=1, type=int)
+parser.add_argument('-n', '--nb_cpu', default=5, type=int)
 
 
 args = parser.parse_args()
@@ -141,7 +142,7 @@ parameters = dict(
     train_folds = args.train_folds,
     val_folds = args.val_folds,
     
-    num_workers=10,
+    num_workers=args.nb_cpu,
     pin_memory=True,
 
     verbose = 2,
@@ -463,6 +464,7 @@ def train_fn(self, epoch: int) -> Union[float, float]:
     T = self.tensorboard.add_scalar
     nb_batch = len(self.train_loader)
 
+    start_time = time.time()
     print("")
 
     self.reset_metrics()
@@ -470,7 +472,6 @@ def train_fn(self, epoch: int) -> Union[float, float]:
     self.model.train()
 
     for i, (X, y) in enumerate(self.train_loader):
-        start_time = time.time()
         y_ = y.detach().clone() # keep a copy outside the graph and in cpu to compute the mAP
         
         X = X.cuda().float()
@@ -482,39 +483,42 @@ def train_fn(self, epoch: int) -> Union[float, float]:
         if args.specAugment:
             X = spec_augmenter(X)
         
-        logits = self.model(X)
-        loss = self.loss_ce(logits, y)
+        with autocast(enabled=True):
+            logits = self.model(X)
+            loss = self.loss_ce(logits, y)
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        with torch.set_grad_enabled(False):
-            
-            pred = torch.sigmoid(logits)
-            
-            fscore = M.fscore_fn(pred, y)
-            acc = M.acc_fn(pred, y)
-            mAP = M.mAP_fn(pred.cpu().reshape(-1), y_.reshape(-1))
-            avg_ce = M.avg_fn(loss.item())
+        # OPTI - update metrics only once every 100 iteration
+        if i % 100 == 0:
+            with torch.set_grad_enabled(False):
+                
+                pred = torch.sigmoid(logits)
+                
+                fscore = M.fscore_fn(pred, y)
+                acc = M.acc_fn(pred, y)
+                mAP = M.mAP_fn(pred.cpu().reshape(-1), y_.reshape(-1))
+                avg_ce = M.avg_fn(loss.item())
 
-            end_time = time.time()
-            running_mean_time = self.time_average_fn(end_time - start_time)
-            
-            # logs
-            print(self.train_form.format(
-                "Training: ",
-                epoch + 1,
-                i, nb_batch,
-                "", avg_ce.value,
-                "", acc.mean, fscore.mean, mAP.mean,
-                (nb_batch - i) * running_mean_time.mean
-            ), end="\r")
+                end_time = time.time()
+                running_mean_time = self.time_average_fn(end_time - start_time)
+                
+                # logs
+                print(self.train_form.format(
+                    "Training: ",
+                    epoch + 1,
+                    i, nb_batch,
+                    "", avg_ce.value,
+                    "", acc.mean, fscore.mean, mAP.mean,
+                    time.time() - start_time
+                ), end="\r")
 
-        T("train/Lce", avg_ce.mean, epoch * nb_batch + i)
-        T("train/f1", fscore.mean, epoch * nb_batch + i)
-        T("train/acc", acc.mean, epoch * nb_batch + i)
-        T("train/mAO", mAP.mean, epoch * nb_batch + i)
+            T("train/Lce", avg_ce.mean, epoch * nb_batch + i)
+            T("train/f1", fscore.mean, epoch * nb_batch + i)
+            T("train/acc", acc.mean, epoch * nb_batch + i)
+            T("train/mAO", mAP.mean, epoch * nb_batch + i)
     
     return avg_ce.mean, fscore.mean
 
@@ -541,8 +545,9 @@ def val_fn(self, epoch: int)  -> Union[float, float]:
             X = X.cuda().float()
             y = y.cuda().float()
 
-            logits = self.model(X)
-            loss = self.loss_ce(logits, y)
+            with autocast(enabled=True):
+                logits = self.model(X)
+                loss = self.loss_ce(logits, y)
 
             pred = torch.sigmoid(logits)
             fscore = M.fscore_fn(pred, y)            
