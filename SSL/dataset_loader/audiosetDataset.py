@@ -149,7 +149,7 @@ class Audioset(object):
         file will lead to loading the chunk the file is in. Therefore, fetching the other file
         containing inside this chunk will be drastically faster.
         Feeding the sample index to the dataset with respect to this optimization is done using the batch sampler bellow
-        """        
+        """         
         # 1 - Find in which HDF file and which chunk is the sample
         hdf_file, chunk_idx, _ = self._get_location(sample_idx)
         
@@ -227,7 +227,35 @@ class Audioset(object):
     @functools.lru_cache
     def __len__(self) -> int:
         nb_total_row = sum(list(self.hdf_nb_row.values()))
-        return nb_total_row
+        return nb_total_rowo
+
+
+class SingleAudioset(Audioset):
+    def __getitem__(self, sample_idx: int) -> Tuple[Tensor, Tensor]:
+        """Recover one filefrom the Audioset dataset.
+        
+        Fetching file should be aligned to the HDF dataset's chunk dimension.
+        
+        One HDF dataset can be separated into chunk for more efficient IO interaction. Fetching one
+        file will lead to loading the chunk the file is in. Therefore, fetching the other file
+        containing inside this chunk will be drastically faster.
+        Feeding the sample index to the dataset with respect to this optimization is done using the batch sampler bellow
+        """         
+        # 1 - Find in which HDF file and which chunk is the sample
+        hdf_file, chunk_idx, _ = self._get_location(sample_idx)
+        
+        # 2 - Read the complete chunk (will be store in memory)
+        data = self.get_date(sample_idx)
+        targets = self.get_target(sample_idx)
+        
+        if self.batch_balancer is not None:
+            data, target = self.batch_balancer(data, target)
+            
+        # 4 - Apply Transformation
+        data = self._apply_transform(data)
+        
+        return data, target
+
         
         
 class ChunkAlignSampler(object):
@@ -484,7 +512,7 @@ def class_balance_split(dataset,
     assert 0.0 <= unsupervised_ratio <= 1.0
     assert supervised_ratio + unsupervised_ratio <= 1.0
     
-    batch_sampler = ChunkAlignSampler(dataset, batch_size=64, shuffle=False)
+    batch_sampler = ChunkAlignSampler(dataset, batch_size=batch_size, shuffle=False)
     all_batches = [batch_id for batch_id in batch_sampler]
     
     if supervised_ratio == 1.0:
