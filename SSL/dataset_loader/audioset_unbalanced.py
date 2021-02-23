@@ -2,7 +2,6 @@ import os
 import random
 import numpy as np
 from torch.nn import Module
-from DCT.util.utils import ZipCycle
 from torch import Tensor
 import torch.utils.data as torch_data
 from torch.utils.data.sampler import SubsetRandomSampler
