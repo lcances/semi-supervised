@@ -1,7 +1,6 @@
 from ubs8k.datasetManager import DatasetManager
 from ubs8k.datasets import Dataset
 from SSL.util.utils import ZipCycle
-from SSL.augmentation_list import augmentations
 from torch.nn import Module
 
 
