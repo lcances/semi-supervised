@@ -11,7 +11,7 @@ from torch.nn import Module
 from torch import Tensor
 from SSL.util.utils import ZipCycle, Cacher
 import torch.utils.data as torch_data
-from torchaudio.datasets import SPEECHCOMMANDS
+from SSL.dataset.speechcommand import SPEECHCOMMANDS
 from tqdm import trange
 import functools
 import soundfile

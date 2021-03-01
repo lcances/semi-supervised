@@ -9,7 +9,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 import sys
 sys.path.append("../../PyTorch/audio/torchaudio")
-from torchaudio.datasets import ESC10, ESC50
+from SSL.dataset.esc import ESC10, ESC50
 
 
 from typing import Union, Tuple
