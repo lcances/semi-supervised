@@ -11,7 +11,7 @@ from torch.nn import Module
 from torch import Tensor
 from SSL.util.utils import ZipCycle, Cacher
 import torch.utils.data as torch_data
-from SSL.dataset.speechcommand import SPEECHCOMMANDS
+from SSL.dataset.speechcommands import SPEECHCOMMANDS
 from tqdm import trange
 import functools
 import soundfile
@@ -139,7 +139,7 @@ class SpeechCommands(SPEECHCOMMANDS):
             data = data.squeeze()
             
         return data, target_mapper[label]
-dd
+
     def save_cache_to_disk(self, name) -> None:
         path = os.path.join(self._path, f"{name}_features.cache")
         torch.save(self.__getitem__.cache, path)
