@@ -119,10 +119,11 @@ class SpeechCommands(SPEECHCOMMANDS):
                  download: bool = False,
                  transform: Module = None,
                  **kwargs) -> None:
-        super().__init__(root, url, download, transform)
+        super().__init__(root, url, download)
 
         assert subset in ["train", "validation", "testing"]
         self.subset = subset
+        self.transform_ = transform
         self.root_path = self._walker[0].split("/")[:-2]
         print(f'transform from SpeechCommands: {transform}')
 
@@ -132,12 +133,13 @@ class SpeechCommands(SPEECHCOMMANDS):
     def __getitem__(self, index: int) -> Tuple[Tensor, int]:
         waveform, _, label, _, _ = super().__getitem__(index)
         
-        if self.transform is not None:
-            waveform = self.transform(waveform)
-            waveform = waveform.squeeze()
+        data = waveform.squeeze()
+        if self.transform_ is not None:
+            data = self.transform(data)
+            data = data.squeeze()
             
-        return waveform, target_mapper[label]
-
+        return data, target_mapper[label]
+dd
     def save_cache_to_disk(self, name) -> None:
         path = os.path.join(self._path, f"{name}_features.cache")
         torch.save(self.__getitem__.cache, path)
@@ -198,6 +200,41 @@ class SpeechCommands(SPEECHCOMMANDS):
             os.path.join(*self.root_path, path)
             for path in mapper[self.subset]
         ]
+        
+        
+class SpeechCommandAug(SpeechCommands):
+    def __init__(self,
+                 root: str,
+                 subset: str = "train",
+                 url: str = URL,
+                 download: bool = False,
+                 transform: Module = None,
+                 enable_cache: bool = False,
+                 **kwargs) -> None:
+        super().__init__(root, subset, url, download, transform=None)
+
+        assert subset in ["train", "validation", "testing"]
+        self.enable_cache = enable_cache
+        self.subset = subset
+        self.root_path = self._walker[0].split("/")[:-2]
+        
+        # Create cached version of some methods
+        self.cached_getitem = Cacher(super().__getitem__)
+        self.cached_transform = Cacher(transform)
+
+        self._keep_valid_files()
+
+    def __getitem__(self, index: int) -> Tuple[Tensor, int]:
+        # loading waveform from disk can always be cached
+        waveform, mapped_target = self.cached_getitem(index, caching=True)
+        
+        # applying transformation
+        data = waveform
+        if self.cached_getitem.func is not None:
+            data = self.cached_transform(data, caching=self.enable_cache)
+            data = data.squeeze()
+            
+        return data, mapped_target
 
         
 class SpeechCommandAug(SpeechCommands):
@@ -512,11 +549,11 @@ def mean_teacher_helper(
     dataset_path = os.path.join(dataset_root)
 
     # validation subset
-    val_dataset = dataset_cls(root=dataset_path, subset="validation", transform=train_transform, download=True, percent_to_drop=0.0)
+    val_dataset = dataset_cls(root=dataset_path, subset="validation", transform=val_transform, download=True, percent_to_drop=0.0)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = dataset_cls(root=dataset_path, subset="train", transform=val_transform, download=True, percent_to_drop=0.93)
+    train_dataset = dataset_cls(root=dataset_path, subset="train", transform=train_transform, download=True, percent_to_drop=0.93)
     s_idx, u_idx = _split_s_u(train_dataset, supervised_ratio)
 
     s_batch_size = int(np.floor(batch_size * supervised_ratio))

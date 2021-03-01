@@ -239,7 +239,7 @@ class SingleAudioset(Audioset):
         data = self.get_data(sample_idx)
         target = self.get_target(sample_idx)
             
-        # 3 - Apply Transformation
+        # 2 - Apply Transformation
         data = self._apply_transform(data)
         
         return data, target
