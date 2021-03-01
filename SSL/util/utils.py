@@ -7,6 +7,7 @@ import time
 from collections import Iterable, Sized
 from zipfile import ZipFile, ZIP_DEFLATED 
 import os
+from typing import Callable
 
 # TODO write q timer decorator that deppend on the logging level
 
@@ -26,6 +27,30 @@ def timeit_logging(func):
                      (func.__name__, time.time()-start_time))
 
     return decorator
+
+
+class Cacher:
+    def __init__(self, func: Callable):
+        self.func = func
+        self.cached_func = self.cache_wrapper(func)
+        
+    def __call__(self, *args, caching: bool = True, **kwargs):
+        if caching:
+            return self.cached_func(*args, **kwargs)
+        
+        return self.func(*args, **kwargs)
+        
+    def cache_wrapper(self, func):
+        def decorator(*args, **kwargs):
+            key = ",".join(map(str, args))
+
+            if key not in decorator.cache:
+                decorator.cache[key] = func(*args, **kwargs)
+
+            return decorator.cache[key]
+
+        decorator.cache = dict()
+        return decorator
 
 
 def conditional_cache_v2(func):

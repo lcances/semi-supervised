@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy
+import tqdm
 import h5py
 import random
 from typing import Tuple, Callable, List
@@ -8,6 +9,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.utils.data import Dataset, DataLoader, Sampler
 import functools
+import itertools
 
 
 class Audioset(object):
@@ -16,7 +18,6 @@ class Audioset(object):
                  rdcc_nbytes: int = 512*1024**2,
                  data_shape: tuple = (320000, ),
                  data_key: str = "waveform",
-                 batch_balancer: Callable = None,
                 ):
         """
         A pytorch dataset of Google AUdioset.
@@ -35,13 +36,11 @@ class Audioset(object):
                 "waveform" when using the raw audio
                 "data" when using the pre-compute mel-spectrogram
         """
-    
         self.transform = transform
         self.version = version
         self.rdcc_nbytes = rdcc_nbytes
         self.hdf_root = root
         self.data_shape = data_shape
-        self.batch_balancer = batch_balancer
         
         if self.version not in ["balanced", "unbalanced", "eval"]:
             raise ValueError("version available: \"unbalanced\", \"balanced\" and \"eval\"")
@@ -54,6 +53,10 @@ class Audioset(object):
         self.hdf_nb_row = dict()
         self.hdf_nb_chunk = dict()
         self.hdf_chunk_size = None
+        
+        # store all targets and all audio_names for faster loading
+        self.targets = None
+        self.audio_names = None
         
         self._check_hdf()
         self._prepare_hdfs()
@@ -149,7 +152,7 @@ class Audioset(object):
         file will lead to loading the chunk the file is in. Therefore, fetching the other file
         containing inside this chunk will be drastically faster.
         Feeding the sample index to the dataset with respect to this optimization is done using the batch sampler bellow
-        """        
+        """         
         # 1 - Find in which HDF file and which chunk is the sample
         hdf_file, chunk_idx, _ = self._get_location(sample_idx)
         
@@ -159,9 +162,6 @@ class Audioset(object):
         # 3 - Keep only the wanted file
         sample_chunk_pos = sample_idx % self.hdf_chunk_size
         data, target = data[sample_chunk_pos], targets[sample_chunk_pos]
-        
-        if self.batch_balancer is not None:
-            data, target = self.batch_balancer(data, target)
             
         # 4 - Apply Transformation
         data = self._apply_transform(data)
@@ -200,7 +200,6 @@ class Audioset(object):
         
         return waveforms, targets
     
-    @functools.lru_cache
     def get_data(self, sample_idx):
         """To call if need to read only one sample from the hdf file"""
         hdf_file, chunk_idx, hdf_name = self._get_location(sample_idx)
@@ -208,7 +207,6 @@ class Audioset(object):
         hdf_sample_idx = sample_idx % self.hdf_nb_row[hdf_name]
         return hdf_file[self.data_key][hdf_sample_idx]
     
-    @functools.lru_cache
     def get_target(self, sample_idx):
         """To call if need to read only the labels of one sample"""
         hdf_file, chunk_idx, hdf_name = self._get_location(sample_idx)
@@ -228,7 +226,83 @@ class Audioset(object):
     def __len__(self) -> int:
         nb_total_row = sum(list(self.hdf_nb_row.values()))
         return nb_total_row
+
+
+class SingleAudioset(Audioset):
+    def __getitem__(self, sample_idx: int) -> Tuple[Tensor, Tensor]:
+        """Recover one file from the Audioset dataset.
+        """         
+        # 1 - Find in which HDF file and which chunk is the sample
+        hdf_file, chunk_idx, _ = self._get_location(sample_idx)
         
+        # 2 - recove only the required file (don't read the chunk)
+        data = self.get_data(sample_idx)
+        target = self.get_target(sample_idx)
+            
+        # 3 - Apply Transformation
+        data = self._apply_transform(data)
+        
+        return data, target
+
+
+class SingleBalancedSampler:
+    def __init__(self, dataset: SingleAudioset, index_list: list, shuffle: bool = True):
+        self.dataset = dataset
+        self.shuffle = shuffle
+        
+        self.index_list = index_list
+        self.all_targets = self._get_all_targets()
+        self.sorted_sample_indexes = self._sort_per_class()
+        
+    def _get_all_targets(self):
+        """ Pre-fetch all the labels corresponding to the dataset samples.
+        It will be used to balance the dataset.
+        The list returned is in the same order than self.index_list
+        """
+        print('Getting all target')
+        if self.dataset.targets is not None:
+            return self.dataset.targets
+        
+        return [self.dataset.get_target(idx) for idx in tqdm.tqdm(self.index_list)]
+    
+    def _sort_per_class(self):
+        """ Pre-sort all the sample among the 527 different class.
+        It will used to pick the correct file to feed the model
+        """
+        print('Sort the classes')
+        class_indexes = [[] for _ in range(527)]
+        
+        for sample_idx, target in zip(self.index_list, self.all_targets):
+            target_idx = numpy.where(target == 1)[0]
+            
+            for t_idx in target_idx:
+                class_indexes[t_idx].append(sample_idx)
+                
+        return class_indexes
+    
+    def _shuffle(self):
+        # Sort the file for each class
+        for l in self.sorted_sample_indexes:
+            random.shuffle(l)
+            
+        # Sort the class order
+        random.shuffle(self.sorted_sample_indexes)
+    
+    def __iter__(self):
+        """ Round Robin algorithm to fetch file one by one from each class.
+        """
+        if self.shuffle:
+            self._shuffle()
+            
+        global_index = 0
+        for cls_idx in itertools.cycle(range(527)):
+            selected_class = self.sorted_sample_indexes[cls_idx]
+            local_idx = global_index % len(selected_class)
+            global_index += 1
+            
+            yield selected_class[local_idx]
+            
+
         
 class ChunkAlignSampler(object):
     """Yield mini-batch align with the HDF chunk.
@@ -366,7 +440,7 @@ def batch_balancer(pool_size = 100, batch_size: int = 64):
 
 # =============================================================================
 #
-#      SUBSET BALANCING FUNCTIONS
+#      SUBSET SPLIT FUNCTIONS
 #
 # =============================================================================
 @functools.lru_cache
@@ -484,7 +558,7 @@ def class_balance_split(dataset,
     assert 0.0 <= unsupervised_ratio <= 1.0
     assert supervised_ratio + unsupervised_ratio <= 1.0
     
-    batch_sampler = ChunkAlignSampler(dataset, batch_size=64, shuffle=False)
+    batch_sampler = ChunkAlignSampler(dataset, batch_size=batch_size, shuffle=False)
     all_batches = [batch_id for batch_id in batch_sampler]
     
     if supervised_ratio == 1.0:
@@ -506,16 +580,18 @@ def class_balance_split(dataset,
     class_needed = 0
     remaining_sample = list(zip(all_targets, all_targets_idx))
     s_subset, remaining_sample = fill_subset(remaining_sample, s_expected_occur)
-    s_batches = _split(s_subset)
+#     s_batches = _split(s_subset)
+    s_batches = s_subset
     
     # For the unsupervised subset, if automatic set, then it is the remaining samples
     if unsupervised_ratio + supervised_ratio == 1.0:
         u_subset = numpy.asarray([s[1] for s in remaining_sample])
-        u_batches = _split(u_subset)
         
     else:
         u_subset, _ = fill_subset(remaining_sample, u_expected_occur)
-        u_batches = _split(u_subset)
+        
+#     u_batches = _split(u_subset)
+    u_batches = u_subset
     
     # Compute the statistics for the supervised and unsupservised splits
     _, _, s_stats = get_class_statistic(dataset, s_batches)
@@ -544,23 +620,23 @@ class BatchSamplerFromList(Sampler):
     
 def get_supervised(version: str = "unbalanced", **kwargs):
     def supervised(
-        dataset_root: str,
-        rdcc_nbytes: int = 512*1024**2,
-        data_shape: tuple = (64, 500, ),
-        data_key: str = "data",
+            dataset_root: str,
+            rdcc_nbytes: int = 512*1024**2,
+            data_shape: tuple = (64, 500, ),
+            data_key: str = "data",
 
-        train_transform: Module = None,
-        val_transform: Module = None,
+            train_transform: Module = None,
+            val_transform: Module = None,
 
-        batch_size: int = 64,
-        supervised_ratio: float = 1.0,
-        unsupervised_ratio: float = None,
-        balance: bool = True,
+            batch_size: int = 64,
+            supervised_ratio: float = 1.0,
+            unsupervised_ratio: float = None,
+            balance: bool = True,
 
-        num_workers: int = 10,
-        pin_memory: bool = False,
+            num_workers: int = 10,
+            pin_memory: bool = False,
 
-        **kwargs) -> Tuple[DataLoader, DataLoader]:
+            **kwargs) -> Tuple[DataLoader, DataLoader]:
 
         #Dataset parameters
         d_params = dict(
@@ -576,38 +652,35 @@ def get_supervised(version: str = "unbalanced", **kwargs):
             pin_memory=pin_memory,
         )
 
-        balancer = None
-        if balance:
-            balancer = batch_balancer(batch_size=batch_size, pool_size=batch_size)
-
-
         # validation subset
-        val_dataset = Audioset(**d_params, version="eval", transform=val_transform)
-        val_sampler = ChunkAlignSampler(val_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, **l_params)
+        val_dataset = SingleAudioset(**d_params, version="eval", transform=val_transform)
+#         val_indexes = list(range(len(val_dataset)))
+#         val_sampler = SingleBalancedSampler(val_dataset, val_indexes, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, **l_params)
 
         # Training subset
-        train_dataset = Audioset(**d_params, version=version, transform=train_transform)
-        train_sampler = ChunkAlignSampler(train_dataset, batch_size=batch_size, shuffle=True)
+        train_dataset = SingleAudioset(**d_params, version=version, transform=train_transform)
 
         if supervised_ratio == 1.0:
-            s_train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, collate_fn=balancer,  **l_params)
+            train_indexes = list(range(len(train_dataset)))
+            train_sampler = SingleBalancedSampler(train_dataset, train_indexes, shuffle=True)
+            s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, **l_params)
 
         else:
             if unsupervised_ratio is None:
                 unsupervised_ratio = 1 - supervised_ratio
 
-            s_batches, u_batches = class_balance_split(train_dataset, 
+            s_indexes, u_indexes = class_balance_split(train_dataset, 
                                                        supervised_ratio=supervised_ratio,
                                                        unsupervised_ratio=unsupervised_ratio,
                                                        batch_size=batch_size,
                                                        verbose=True)
 
-            s_batch_sampler = BatchSamplerFromList(s_batches)
-            u_batch_sampler = BatchSamplerFromList(u_batches)
+            s_batch_sampler = SingleBalancedSampler(train_dataset, s_indexes, shuffle=True)
+            u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
 
-            s_train_loader = DataLoader(train_dataset, batch_sampler=s_batch_sampler, collate_fn=balancer, **l_params)
-            u_train_loader = DataLoader(train_dataset, batch_sampler=u_batch_sampler, **l_params)
+            s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=s_batch_sampler, **l_params)
+            u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
 
 #             train_loader = ZipCycle([s_train_loader, u_train_loader])
 
