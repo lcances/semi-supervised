@@ -49,6 +49,7 @@ group_t.add_argument("--nb_epoch", default=125_000, type=int) # nb iteration
 group_t.add_argument("--learning_rate", default=0.003, type=float)
 group_t.add_argument("--resume", action="store_true", default=False)
 group_t.add_argument("--seed", default=1234, type=int)
+group_t.add_argument('--num_classes', default=527, type=int)
 
 group_mixup = parser.add_argument_group("Mixup parameters")
 group_mixup.add_argument("--mixup", action="store_true", default=False)
@@ -102,7 +103,7 @@ reset_seed(args.seed)
 from SSL.trainers.trainers import Trainer
 
 class SupervisedTrainer(Trainer):
-    
+
     def __init__(self, model: str, dataset: str):
         super().__init__(model, "supervised", dataset)
 
@@ -128,7 +129,7 @@ parameters = dict(
     batch_size = args.batch_size,
     train_folds = args.train_folds,
     val_folds = args.val_folds,
-    
+
     num_workers=args.nb_cpu,
     pin_memory=True,
 
@@ -158,12 +159,12 @@ def create_model(self, nb_gpu: int = 1):
         num_classes=self.num_classes,
     )
     self.model = self.model.cuda()
-    
+
     s = summary(self.model, self.input_shape)
-    
+
     if nb_gpu > 1:
         self.model = nn.DataParallel(self.model)
-    
+
 trainer.create_model = MethodType(create_model, trainer)
 trainer.create_model(args.nb_gpu)
 
@@ -228,7 +229,7 @@ if args.mixup:
     if args.mixup_max: sufix_title += "-max"
     if args.mixup_label: sufix_title += "-label"
     sufix_title += f"-{args.mixup_alpha}-a"
-    
+
 # SpecAugment parameters
 if args.specAugment:
     sufix_title += '_specAugment'
@@ -283,7 +284,7 @@ class MAP(Metrics):
         super().__call__(y_pred, y_true)
         aps = metrics.average_precision_score(y_true, y_pred, average=None)
         aps = numpy.nan_to_num(aps)
-        
+
         self.values.append(aps.mean())
         return self
 
@@ -295,7 +296,7 @@ def init_metrics(self):
         mAP_fn=MAP()
     )
     self.time_average_fn = ContinueAverage()
-    
+
     self.maximum_tracker = track_maximum()
 
 trainer.init_metrics = MethodType(init_metrics, trainer)
@@ -321,7 +322,7 @@ def set_printing_form(self):
 
     self.train_form = value_form
     self.val_form = UNDERLINE_SEQ + value_form + RESET_SEQ
-    
+
 trainer.set_printing_form = MethodType(set_printing_form, trainer)
 
 
@@ -340,7 +341,7 @@ import torch.nn.functional as F
 
 class DropStripes(nn.Module):
     def __init__(self, dim, drop_width, stripes_num):
-        """Drop stripes. 
+        """Drop stripes.
         Args:
           dim: int, dimension along which to drop
           drop_width: int, maximum width of stripes to drop
@@ -386,11 +387,11 @@ class DropStripes(nn.Module):
 
 
 class SpecAugmentation(nn.Module):
-    def __init__(self, time_drop_width, time_stripes_num, freq_drop_width, 
+    def __init__(self, time_drop_width, time_stripes_num, freq_drop_width,
         freq_stripes_num):
-        """Spec augmetation. 
-        [ref] Park, D.S., Chan, W., Zhang, Y., Chiu, C.C., Zoph, B., Cubuk, E.D. 
-        and Le, Q.V., 2019. Specaugment: A simple data augmentation method 
+        """Spec augmetation.
+        [ref] Park, D.S., Chan, W., Zhang, Y., Chiu, C.C., Zoph, B., Cubuk, E.D.
+        and Le, Q.V., 2019. Specaugment: A simple data augmentation method
         for automatic speech recognition. arXiv preprint arXiv:1904.08779.
         Args:
           time_drop_width: int
@@ -401,10 +402,10 @@ class SpecAugmentation(nn.Module):
 
         super(SpecAugmentation, self).__init__()
 
-        self.time_dropper = DropStripes(dim=2, drop_width=time_drop_width, 
+        self.time_dropper = DropStripes(dim=2, drop_width=time_drop_width,
             stripes_num=time_stripes_num)
 
-        self.freq_dropper = DropStripes(dim=1, drop_width=freq_drop_width, 
+        self.freq_dropper = DropStripes(dim=1, drop_width=freq_drop_width,
             stripes_num=freq_stripes_num)
 
     def forward(self, input):
@@ -442,7 +443,7 @@ batch_summed = []
 #         ratio = min(summed) / max(summed)
 #         if ratio < 0.16:
 #             return False
-        
+
 #         return True
 
 def train_fn(self, epoch, X, y, start_time) -> Union[float, float]:
@@ -494,7 +495,7 @@ def train_fn(self, epoch, X, y, start_time) -> Union[float, float]:
     T("train/Lce", avg_ce.mean(size=100), epoch)
     T("train/f1", fscore.mean(size=100), epoch)
     T("train/acc", acc.mean(size=100), epoch)
-    
+
     return avg_ce.value, fscore.value
 
 trainer.train_fn = MethodType(train_fn, trainer)
@@ -524,7 +525,7 @@ def val_fn(self, epoch: int)  -> Union[float, float]:
             loss = self.loss_ce(logits, y)
 
             pred = torch.sigmoid(logits)
-            fscore = M.fscore_fn(pred, y)            
+            fscore = M.fscore_fn(pred, y)
             acc = M.acc_fn(pred, y)
             mAP = M.mAP_fn(pred.cpu().reshape(-1), y.cpu().reshape(-1))
             avg_ce = M.avg_fn(loss.item())
@@ -549,9 +550,9 @@ def val_fn(self, epoch: int)  -> Union[float, float]:
     T("max/acc", self.maximum_tracker("acc", acc.mean(size=100)), epoch)
     T("max/f1", self.maximum_tracker("f1", fscore.mean(size=100)), epoch)
     T('max/mAP', self.maximum_tracker('mAP', mAP.mean(size=100)), epoch)
-    
+
     return avg_ce, fscore
-    
+
 trainer.val_fn = MethodType(val_fn, trainer)
 
 
@@ -584,9 +585,9 @@ def test_fn(self):
             pred = torch.sigmoid(logits)
             y_one_hot = y # F.one_hot(y, num_classes=self.num_classes)
             fscore = M.fscore_fn(pred, y_one_hot).mean
-            
+
             acc = M.acc_fn(logits, y).mean
-            
+
             avg_ce = M.avg_fn(loss.item()).mean
 
             # logs
@@ -598,9 +599,9 @@ def test_fn(self):
                 "", acc, fscore,
                 time.time() - start_time
             ), end="\r")
-            
+
     return avg_ce, fscore
-            
+
 trainer.test_fn = MethodType(test_fn, trainer)
 
 
@@ -633,15 +634,15 @@ for e in range(start_epoch, args.nb_epoch):
         val_avg_ce, val_fscore = trainer.val_fn(e)
         print('')
         trainer.checkpoint.step(val_fscore.value)
-        
-    # Perform train 
+
+    # Perform train
     train_avg_ce, train_fscore = trainer.train_fn(e, *train_iterator.next(), start_time)
-    
+
     # Apply the different callbacks
 #     for c in trainer.callbacks:
 #         c.step()
-    
+
     if e % 1000 == 0:
         trainer.tensorboard.flush()
-    
+
 trainer.save_hparams(vars(args))
