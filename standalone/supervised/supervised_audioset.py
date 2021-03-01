@@ -44,8 +44,8 @@ parser.add_argument("-D", "--dataset", default="audioset-unbalanced", type=str)
 group_t = parser.add_argument_group("Commun parameters")
 group_t.add_argument("-m", "--model", default="wideresnet28_2", type=str)
 group_t.add_argument("--supervised_ratio", default=1.0, type=float)
-group_t.add_argument("--batch_size", default=128, type=int)
-group_t.add_argument("--nb_epoch", default=500_000, type=int) # nb iteration
+group_t.add_argument("--batch_size", default=256, type=int)
+group_t.add_argument("--nb_epoch", default=125_000, type=int) # nb iteration
 group_t.add_argument("--learning_rate", default=0.003, type=float)
 group_t.add_argument("--resume", action="store_true", default=False)
 group_t.add_argument("--seed", default=1234, type=int)
@@ -486,14 +486,14 @@ def train_fn(self, epoch, X, y, start_time) -> Union[float, float]:
             "Training: ",
             epoch + 1,
             e, args.nb_epoch,
-            "", avg_ce.mean(size=1000),
-            "", acc.mean(size=1000), fscore.mean(size=1000), 0.0,
+            "", avg_ce.mean(size=100),
+            "", acc.mean(size=100), fscore.mean(size=100), 0.0,
             time.time() - start_time,
         ), end="\r")
 
-    T("train/Lce", avg_ce.mean(size=1000), epoch)
-    T("train/f1", fscore.mean(size=1000), epoch)
-    T("train/acc", acc.mean(size=1000), epoch)
+    T("train/Lce", avg_ce.mean(size=100), epoch)
+    T("train/f1", fscore.mean(size=100), epoch)
+    T("train/acc", acc.mean(size=100), epoch)
     
     return avg_ce.value, fscore.value
 
@@ -512,7 +512,7 @@ def val_fn(self, epoch: int)  -> Union[float, float]:
     start_time = time.time()
     print("")
 
-    self.reset_metrics()
+#     self.reset_metrics()
     self.model.eval()
 
     with torch.set_grad_enabled(False):
@@ -534,21 +534,21 @@ def val_fn(self, epoch: int)  -> Union[float, float]:
                 "Validation: ",
                 epoch + 1,
                 i, nb_batch,
-                "", avg_ce.mean(size=1000),
-                "", acc.mean(size=1000), fscore.mean(size=1000), mAP.mean(size=1000),
+                "", avg_ce.mean(size=100),
+                "", acc.mean(size=100), fscore.mean(size=100), mAP.mean(size=100),
                 time.time() - start_time
             ), end="\r")
 
-    T("val/Lce", avg_ce.mean(size=1000), epoch)
-    T("val/f1", fscore.mean(size=1000), epoch)
-    T("val/acc", acc.mean(size=1000), epoch)
-    T("val/mAP", mAP.mean(size=1000), epoch)
+    T("val/Lce", avg_ce.mean(size=100), epoch)
+    T("val/f1", fscore.mean(size=100), epoch)
+    T("val/acc", acc.mean(size=100), epoch)
+    T("val/mAP", mAP.mean(size=100), epoch)
 
     T("hyperparameters/learning_rate", self._get_lr(), epoch)
 
-    T("max/acc", self.maximum_tracker("acc", acc.mean(size=1000)), epoch)
-    T("max/f1", self.maximum_tracker("f1", fscore.mean(size=1000)), epoch)
-    T('max/mAP', self.maximum_tracker('mAP', mAP.mean(size=1000)), epoch)
+    T("max/acc", self.maximum_tracker("acc", acc.mean(size=100)), epoch)
+    T("max/f1", self.maximum_tracker("f1", fscore.mean(size=100)), epoch)
+    T('max/mAP', self.maximum_tracker('mAP', mAP.mean(size=100)), epoch)
     
     return avg_ce, fscore
     
@@ -628,14 +628,14 @@ train_iterator = iter(trainer.train_loader)
 start_time = time.time()
 
 for e in range(start_epoch, args.nb_epoch):
-    # Perform train 
-    train_avg_ce, train_fscore = trainer.train_fn(e, *train_iterator.next(), start_time)
-    
     # Validation every 10 000 iteration
-    if e % 10_000 == 0 and e != 0:
+    if e % 500 == 0:
         val_avg_ce, val_fscore = trainer.val_fn(e)
         print('')
         trainer.checkpoint.step(val_fscore.value)
+        
+    # Perform train 
+    train_avg_ce, train_fscore = trainer.train_fn(e, *train_iterator.next(), start_time)
     
     # Apply the different callbacks
 #     for c in trainer.callbacks:
