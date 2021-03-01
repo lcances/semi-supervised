@@ -5,7 +5,6 @@ from torch.nn import Module
 from torch import Tensor
 import torch.utils.data as torch_data
 from torch.utils.data.sampler import SubsetRandomSampler
-from torchaudio.datasets import ESC10, ESC50
 
 from typing import Union, Tuple
 from torch.utils.data import DataLoader
