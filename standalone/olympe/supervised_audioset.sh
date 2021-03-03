@@ -111,17 +111,22 @@ cat << EOT > .sbatch_tmp.sh
 #SBATCH --output=${LOG_DIR}/${SBATCH_JOB_NAME}.out
 #SBATCH --error=${LOG_DIR}/${SBATCH_JOB_NAME}.err
 #SBATCH -N $NB_NODE
-#SBATCH -n $NB_CPU   # for gpu user it correspond to the number of cpu
+#SBATCH -n $NB_TASK   # for gpu user it correspond to the number of cpu
+#SBATCH --ntasks-per-node=$NB_TASK
+#SBATCH --ntasks-per-core=1
+#SBATCH --cpus-per-task=$NB_CPU
 #SBATCH --gres=gpu:$NB_GPU
 #SBATCH --mem=$MEM
 #SBATCH --time=$TIME
+#SBATCH --mail-user=leo.cances@irit.fr
 
 # Log some module
+module load cuda/10.1.105
 module load singularity/3.0.3
 
 
 # sbatch configuration
-container=/usr/local/containers/cances/pytorch-dev.sif
+container=/usr/local/containers/cances/pytorch_cuda_10.sif
 python=/tmpdir/cances/miniconda3/envs/ssl/bin/python
 script=$SCRIPT
 
@@ -134,6 +139,7 @@ IFS=";" read -a folds <<< \$folds_str
 
 # -------- hardware parameters --------
 common_args=\$(append "\$common_args" $NB_GPU '--nb_gpu')
+common_args=\$(append "\$common_args" $NB_CPU '--nb_cpu')
 
 # -------- dataset & model ------
 common_args=\$(append "\$common_args" $DTASET '--dataset')
@@ -181,8 +187,10 @@ do
 
     extra_params="\${tensorboard_sufix} \${folds[\$i]}"
 
-    echo srun singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
-    srun singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
+    echo srun \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
+    srun \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
+    # echo srun singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
+    # srun singularity exec \${container} \${python} \${script} \${common_args} \${dataset_args} \${extra_params}
 done
 
 EOT
