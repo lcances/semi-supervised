@@ -60,6 +60,7 @@ class CheckPoint:
             "optimizer": self.optimizer.state_dict(),
             "epoch": self.epoch_counter,
         }
+        
         if new_value is not None:
             state["best_metric"] = new_value
 
@@ -106,19 +107,11 @@ class CheckPoint:
             self.model[i].load_state_dict(destination["state_dict"][i])
 
     def _check_is_better(self, new_value):
-        assert len(self.best_metric.shape) == len(new_value.shape)
+        if self.best_metric is None:
+            self.best_metrics = new_value
+            return True
 
-        # The case of 0-d tensor
-        if len(self.best_metric.shape) == 0:
-            if self.model == "max":
-                return self.best_metric < new_value
-            return self.best_metric > new_value
-
-        # Multi-dimension tensor
-        if self.mode == "max":
-            return any(new_value > self.best_metric)
-
-        return any(self.best_metric > new_value)
+        return self.best_metric < new_value
 
     
 class mSummaryWriter(SummaryWriter):
