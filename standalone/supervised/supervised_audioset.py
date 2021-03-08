@@ -594,8 +594,8 @@ start_time = time.time()
 for e in range(start_epoch, args.nb_epoch):
 #     # Validation every 500 iteration 
     if e % 500 == 0:
-        print('')
         val_avg_ce, val_fscore, val_mAP = trainer.val_fn(e)
+        print('')
         trainer.checkpoint.step(val_mAP.mean(size=100))
     
     # Perform train 

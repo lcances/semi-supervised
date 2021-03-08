@@ -10,10 +10,10 @@ m_args="--mixup --mixup_alpha 0.4"
 # bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} --mixup_label --mixup_max
 
 # Cross validation run on the best
-bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} -C
+# bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} -C
 #bash mean-teacher_mixup.sh --dataset ubs8k --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} -C
 # 
-bash mean-teacher_mixup.sh --dataset esc10 --model wideresnet28_2 ${t_args} ${mt_args} -C
+#bash mean-teacher_mixup.sh --dataset esc10 --model wideresnet28_2 ${t_args} ${mt_args} -C
 #bash mean-teacher_mixup.sh --dataset esc10 --model wideresnet28_2 ${t_args} ${mt_args} ${m_args} -C
 # 
 bash mean-teacher_mixup.sh --dataset speechcommand --model wideresnet28_2 ${t_args} ${mt_args}
