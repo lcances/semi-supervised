@@ -1,10 +1,10 @@
 import os
 import torch
 import numpy
-import tqdm
+from tqdm import tqdm, trange
 import h5py
 import random
-from typing import Tuple, Callable, List
+from typing import Tuple, List
 from torch import Tensor
 from torch.nn import Module
 from torch.utils.data import Dataset, DataLoader, Sampler
@@ -12,13 +12,12 @@ import functools
 import itertools
 
 
-class Audioset(object):
+class Audioset(Dataset):
     def __init__(self, root, transform: Module = None,
                  version: str = "unbalanced",
-                 rdcc_nbytes: int = 512*1024**2,
+                 rdcc_nbytes: int = 512 * 1024 ** 2,
                  data_shape: tuple = (320000, ),
-                 data_key: str = "waveform",
-                ):
+                 data_key: str = "waveform"):
         """
         A pytorch dataset of Google AUdioset.
 
@@ -62,7 +61,6 @@ class Audioset(object):
         self._prepare_hdfs()
         self._errors()
 
-
     def _errors(self):
         """ The different condition to use this dataset are.
 
@@ -71,7 +69,7 @@ class Audioset(object):
         - HDF chunk size must be identical accross all HDF files.
         """
         def is_power2(n):
-            return (n & (n-1) == 0) and n != 0
+            return (n & (n - 1) == 0) and n != 0
 
         if not is_power2(self.hdf_chunk_size):
             raise RuntimeError("HDF file chunk first dimension must be a pwoer of 2. it is %d" % self.hdf_chunk_size)
@@ -109,12 +107,8 @@ class Audioset(object):
 
         hdf_names = [
             name for name in os.listdir(self.hdf_root)
-            if ".h5" in name
-            and self.version[:4] in name[:4]
+            if ".h5" in name and self.version[:4] in name[:4]
         ]
-        print("______")
-        print(self.version[:3])
-        print(hdf_names)
 
         for name in hdf_names:
             path = os.path.join(self.hdf_root, name)
@@ -132,7 +126,7 @@ class Audioset(object):
         self.targets = numpy.load(targets_path)[()]
 
         audio_names_path = os.path.join(self.hdf_root, "audio_names.npy")
-        self.audio_names =numpy.load(audio_names_path)
+        self.audio_names = numpy.load(audio_names_path)
 
     def _close_hdfs(self):
         for hdf_file in self.hdf_mapper.values():
@@ -142,7 +136,6 @@ class Audioset(object):
         self.hdf_nb_row = dict()
         self.hdf_nb_chunk = dict()
         self.hdf_chunk_size = None
-
 
     def __getitem__(self, sample_idx: int) -> Tuple[Tensor, Tensor]:
         """Recover one filefrom the Audioset dataset.
@@ -185,7 +178,7 @@ class Audioset(object):
                     return self.hdf_mapper[hdf_name], local_chunk_idx, hdf_name
 
                 else:
-                    local_chunk_idx = global_chunk_idx - cumulative_nb_chunk[i-1]
+                    local_chunk_idx = global_chunk_idx - cumulative_nb_chunk[i - 1]
                     hdf_name = hdf_names[i]
                     return self.hdf_mapper[hdf_name], local_chunk_idx, hdf_name
 
@@ -283,8 +276,8 @@ class SingleBalancedSampler:
 
     def _shuffle(self):
         # Sort the file for each class
-        for l in self.sorted_sample_indexes:
-            random.shuffle(l)
+        for i in self.sorted_sample_indexes:
+            random.shuffle(i)
 
         # Sort the class order
         random.shuffle(self.sorted_sample_indexes)
@@ -302,7 +295,6 @@ class SingleBalancedSampler:
             global_index += 1
 
             yield selected_class[local_idx]
-
 
 
 class ChunkAlignSampler(object):
@@ -369,7 +361,7 @@ class ChunkAlignSampler(object):
         return sum(map(len, self.hdf_batches))
 
 
-def batch_balancer(pool_size = 100, batch_size: int = 64):
+def batch_balancer(pool_size=100, batch_size: int = 64):
     """Stochastic batch balancing.
 
     Audioset is a very unbalanced dataset. The ratio between the least represented and
@@ -398,7 +390,7 @@ def batch_balancer(pool_size = 100, batch_size: int = 64):
     else:
         raise ValueError(f"Balancer is configure to work with batch_size equal to {valid_batch_size}")
 
-    print(f'parameters "repeat" set to: {repeat}' )
+    print(f'parameters "repeat" set to: {repeat}')
 
     def balance(data: list):
 
@@ -526,15 +518,12 @@ def class_balance_split(dataset,
         subset_occur = numpy.zeros(shape=(527,))
         subset = []
 
-        class_cursor = 0
-        valid = [0] * 527
-
         with tqdm.tqdm(total=sum(expected)) as progress:
             for class_idx in range(527):
                 idx = 0
                 while idx < len(remaining_samples) and subset_occur[class_idx] < expected[class_idx]:
                     if remaining_samples[idx][0][class_idx] == 1:
-                        target, target_idx =  remaining_samples.pop(idx)
+                        target, target_idx = remaining_samples.pop(idx)
                         subset_occur += target
                         subset.append(target_idx)
                         progress.update(sum(target))
@@ -542,15 +531,6 @@ def class_balance_split(dataset,
                     idx += 1
 
         return numpy.asarray(subset), remaining_samples
-
-    def _split(subset_idx):
-        # Split subsets into batches
-        extra = len(subset_idx) % batch_size
-        subset = subset_idx[:-extra]
-        nb_batches = len(subset) // batch_size
-        batches = numpy.split(subset, nb_batches)
-
-        return batches
 
     if unsupervised_ratio is None:
         unsupervised_ratio = 1 - supervised_ratio
@@ -563,11 +543,14 @@ def class_balance_split(dataset,
     all_batches = [batch_id for batch_id in batch_sampler]
 
     if supervised_ratio == 1.0:
-        return all_batches, []
+        return list(range(len(dataset))), []
 
     # get all dataset targets and compute original class distribution metrics
-    if dataset.version == "unbalanced": all_targets = dataset.targets
-    else: all_targets = get_all_targets(dataset)
+    if dataset.version == "unbalanced":
+        all_targets = dataset.targets
+    else:
+        all_targets = get_all_targets(dataset)
+
     all_targets_idx = list(range(len(all_targets)))
     _, _, original_statistics = get_class_statistic(dataset, all_batches)
 
@@ -578,7 +561,6 @@ def class_balance_split(dataset,
     print("s expected occur: ", sum(s_expected_occur))
 
     # loop through the dataset and constitute the two subset.
-    class_needed = 0
     remaining_sample = list(zip(all_targets, all_targets_idx))
     s_subset, remaining_sample = fill_subset(remaining_sample, s_expected_occur)
 #     s_batches = _split(s_subset)
@@ -604,7 +586,6 @@ def class_balance_split(dataset,
     return s_batches, u_batches
 
 
-
 class BatchSamplerFromList(Sampler):
     """ Sample batch from a list of batches
     """
@@ -619,10 +600,11 @@ class BatchSamplerFromList(Sampler):
     def __len__(self) -> int:
         return len(self.batches)
 
+
 def get_supervised(version: str = "unbalanced", **kwargs):
     def supervised(
             dataset_root: str,
-            rdcc_nbytes: int = 512*1024**2,
+            rdcc_nbytes: int = 512 * 1024 ** 2,
             data_shape: tuple = (64, 500, ),
             data_key: str = "data",
 
@@ -678,13 +660,12 @@ def get_supervised(version: str = "unbalanced", **kwargs):
                                                        verbose=True)
 
             s_batch_sampler = SingleBalancedSampler(train_dataset, s_indexes, shuffle=True)
-            u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
+            # u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
 
             s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=s_batch_sampler, **l_params)
-            u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
+            # u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
 
 #             train_loader = ZipCycle([s_train_loader, u_train_loader])
-
 
         return None, s_train_loader, val_loader
     return supervised
