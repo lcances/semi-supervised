@@ -10,6 +10,7 @@ from torch.nn import Module
 from torch.utils.data import Dataset, DataLoader, Sampler
 import functools
 import itertools
+from SSL.util.utils import cache_to_disk
 
 
 class Audioset(Dataset):
@@ -257,7 +258,7 @@ class SingleBalancedSampler:
         if self.dataset.targets is not None:
             return self.dataset.targets
 
-        return [self.dataset.get_target(idx) for idx in tqdm.tqdm(self.index_list)]
+        return [self.dataset.get_target(idx) for idx in tqdm(self.index_list)]
 
     def _sort_per_class(self):
         """ Pre-sort all the sample among the 527 different class.
@@ -505,11 +506,14 @@ def get_class_statistic(dataset, batch_indexes: list):
     return class_sum, dist, dict(mean=mean, std=std, mini=mini, maxi=maxi, ratio=ratio, occur=occur, missing=missing)
 
 
+@cache_to_disk(path=None)
 def class_balance_split(dataset,
                         supervised_ratio: float = 0.1,
                         unsupervised_ratio: float = None,
                         batch_size: int = 64,
-                        verbose: bool = True):
+                        verbose: bool = True,
+                        seed: int = 1234
+                       ):
     """Perform supervised / unsupervised split "equally" distributed within each class.
     In order to achieve some balancing, the "chunked" HDf features can't be used. Each files
     will be fetch individually. The speed will be greatly reduce.
@@ -518,7 +522,7 @@ def class_balance_split(dataset,
         subset_occur = numpy.zeros(shape=(527,))
         subset = []
 
-        with tqdm.tqdm(total=sum(expected)) as progress:
+        with tqdm(total=sum(expected)) as progress:
             for class_idx in range(527):
                 idx = 0
                 while idx < len(remaining_samples) and subset_occur[class_idx] < expected[class_idx]:
