@@ -55,6 +55,46 @@ class Cacher:
         return decorator
 
 
+def get_train_format(framework: str = 'supervised'):
+    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup']
+
+    UNDERLINE_SEQ = "\033[1;4m"
+    RESET_SEQ = "\033[0m"
+
+    if framework == 'supervised':
+        header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<8.8} {:<6.6} - {:<9.9} {:<12.12}| {:<9.9}- {:<6.6}"
+        value_form  = "{:<8.8} {:<6} - {:<6} - {:<8.8} {:<6.4f} - {:<9.9} {:<10.4f}| {:<9.4f}- {:<6.4f}"
+
+        header = header_form.format(
+            ".               ", "Epoch", "%", "Losses:", "ce", "metrics: ", "acc", "F1 ","Time"
+        )
+
+    elif framework == 'mean-teacher':
+        header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<10.8} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} | {:<10.8} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} - {:<8.6}"
+        value_form = "{:<8.8} {:<6d} - {:<6d} - {:<10.8} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} | {:<10.8} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} - {:<8.4f}"
+        header = header_form.format(".               ", "Epoch",  "%", "Student:", "ce", "ccost",
+                                    "acc_s", "f1_s", "acc_u", "f1_u", "Teacher:", "ce", "acc_s", "f1_s", "acc_u", "f1_u", "Time")
+
+    elif framework == 'dct':
+        header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<8.8} {:<6.6} | {:<6.6} | {:<6.6} | {:<6.6} - {:<9.9} {:<9.9} | {:<9.9}- {:<6.6}"
+        value_form = "{:<8.8} {:<6} - {:<6} - {:<8.8} {:<6.4f} | {:<6.4f} | {:<6.4f} | {:<6.4f} - {:<9.9} {:<9.4f} | {:<9.4f}- {:<6.4f}"
+
+        header = header_form.format(
+            "", "Epoch", "%", "Losses:", "Lsup", "Lcot", "Ldiff", "total", "metrics: ", "acc_s1", "acc_u1", "Time"
+        )
+
+    elif framework == 'audioset-sup':
+        header_form = "{:<16.16} {:<5.5} - {:<5.5} / {:<5.5} - {:<7.7} {:<9.9} - {:<8.8} {:<12.12} {:<12.12} {:<12.12} - {:<6.6}"
+        value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
+
+        header = header_form.format(".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc", "F1", "mAP", "Time")
+
+    train_form = value_form
+    val_form = UNDERLINE_SEQ + value_form + RESET_SEQ
+
+    return header, train_form, val_form
+
+
 def cache_to_disk(path: str = None):
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -121,6 +161,11 @@ def track_maximum():
 def get_datetime():
     now = datetime.datetime.now()
     return str(now)[:10] + "_" + str(now)[11:-7]
+
+
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
 
 
 def get_model_from_name(model_name):
