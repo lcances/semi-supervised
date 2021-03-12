@@ -58,16 +58,16 @@ function show_help {
 # osirim parameters
 NODE=" "
 NB_TASK=1
-NB_GPU=1
-NB_CPU=5
+NB_GPU=2
+NB_CPU=10
 PARTITION="GPUNodes"
 
 # training parameters
-MODEL=wideresnet28_2
-DATASET="ubs8k"
+MODEL=MobileNetV2
+DATASET="audioset-unbalanced"
 RATIO=1.0
-NB_EPOCH=500000
-BATCH_SIZE=64
+NB_EPOCH=125000
+BATCH_SIZE=256
 LR=0.003
 SEED=1234
 
@@ -171,7 +171,7 @@ common_args=\$(append "\$common_args" $DATASET '--dataset')
 common_args=\$(append "\$common_args" $MODEL '--model')
 
 # -------- training common_args --------
-common_args=\$(append "\$common_args" $SUPERVISED_RATIO '--supervised_ratio')
+common_args=\$(append "\$common_args" $RATIO '--supervised_ratio')
 common_args=\$(append "\$common_args" $NB_EPOCH '--nb_epoch')
 common_args=\$(append "\$common_args" $LR '--learning_rate')
 common_args=\$(append "\$common_args" $BATCH_SIZE '--batch_size')
@@ -202,4 +202,4 @@ EOT
 
 echo "sbatch store in .sbatch_tmp.sh"
 sbatch .sbatch_tmp.sh
-#bash .sbatch_tmp.sh
+# bash .sbatch_tmp.sh

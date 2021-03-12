@@ -10,7 +10,7 @@ from torch.nn import Module
 from torch.utils.data import Dataset, DataLoader, Sampler
 import functools
 import itertools
-from SSL.util.utils import cache_to_disk
+from SSL.util.utils import cache_to_disk, ZipCycle
 
 
 class Audioset(Dataset):
@@ -282,6 +282,9 @@ class SingleBalancedSampler:
 
         # Sort the class order
         random.shuffle(self.sorted_sample_indexes)
+        
+    def __len__(self):
+        return len(self.index_list)
 
     def __iter__(self):
         """ Round Robin algorithm to fetch file one by one from each class.
@@ -664,10 +667,10 @@ def get_supervised(version: str = "unbalanced", **kwargs):
                                                        verbose=True)
 
             s_batch_sampler = SingleBalancedSampler(train_dataset, s_indexes, shuffle=True)
-            # u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
+#             u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
 
             s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=s_batch_sampler, **l_params)
-            # u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
+#             u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
 
 #             train_loader = ZipCycle([s_train_loader, u_train_loader])
 
