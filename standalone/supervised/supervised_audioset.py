@@ -4,25 +4,16 @@ os.environ["NUMEXPR_NU M_THREADS"] = "2"
 os.environ["OMP_NUM_THREADS"] = "2"
 import time
 from typing import Union
-import numpy
 import torch
 import torch.nn as nn
-import torch.utils.data as data
-import torch.nn.functional as F
-import torchvision.transforms as transforms
 from torchsummary import summary
-from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, DotDict, get_train_format, get_lr
 from SSL.util.mixup import MixUpBatchShuffle
 from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage, MAP
-from metric_utils.metrics import Metrics
 from augmentation_utils.spec_augmentations import SpecAugmentation
-from sklearn import metrics
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
@@ -60,7 +51,7 @@ def run(cfg: DictConfig) -> DictConfig:
         verbose=1
     )
 
-    # The input shape of the data is used to generate the model 
+    # The input shape of the data is used to generate the model
     input_shape = tuple(train_loader.dataset[0][0].shape)
 
     # -------- Prepare the model --------
@@ -107,7 +98,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
     # -------- Optimizer, callbacks, loss and checkpoint --------
     optimizer = load_optimizer(cfg.dataset.dataset, "supervised", learning_rate=cfg.train_param.learning_rate, model=model)
-    callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_epoch)
+    # callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_epoch)
     loss_ce = nn.BCEWithLogitsLoss(reduction="mean")
 
     checkpoint_title = f'{cfg.model.model}_{sufix_title}'
@@ -151,9 +142,6 @@ def run(cfg: DictConfig) -> DictConfig:
 
         model.train()
 
-        # keep a copy outside the graph and in cpu to compute the mAP
-        y_ = y.detach().clone()
-
         X = X.cuda().float()
         y = y.cuda().float()
 
@@ -192,7 +180,7 @@ def run(cfg: DictConfig) -> DictConfig:
         T("train/Lce", avg_ce.mean(size=100), epoch)
         T("train/f1", fscore.mean(size=100), epoch)
         T("train/acc", acc.mean(size=100), epoch)
-        
+
         return avg_ce.value, fscore.value
 
     def val_fn(epoch: int) -> Union[float, float]:
@@ -255,14 +243,14 @@ def run(cfg: DictConfig) -> DictConfig:
     start_time = time.time()
 
     for e in range(start_iteration, end_iteration):
-        # Validation every 500 iteration 
+        # Validation every 500 iteration
         if e % 500 == 0:
             val_avg_ce, val_fscore, val_mAP = val_fn(e)
             print('')
             checkpoint.step(val_mAP.mean(size=100))
             tensorboard.flush()
 
-        # Perform train 
+        # Perform train
         train_fn(e, *train_iterator.next(), start_time)
 
     # -------- Training loop --------
