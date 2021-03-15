@@ -62,12 +62,16 @@ def run(cfg: DictConfig) -> DictConfig:
     student = model_func(input_shape=input_shape, num_classes=cfg.dataset.num_classes)
     teacher = model_func(input_shape=input_shape, num_classes=cfg.dataset.num_classes)
 
-    student = student.cuda()
-    teacher = teacher.cuda()
-
     # We do not need gradient for the teacher model
     for p in teacher.parameters():
         p.detach()
+
+    student = student.cuda()
+    teacher = teacher.cuda()
+
+    if cfg.hardware.nb_gpu > 1:
+        student = nn.DataParallel(student)
+        teacher = nn.DataParallel(teacher)
 
     summary(student, input_shape)
 
@@ -182,7 +186,6 @@ def run(cfg: DictConfig) -> DictConfig:
     # For applying mixup
     mixup_fn = MixUpBatchShuffle(alpha=cfg.mixup.alpha, apply_max=cfg.mixup.max, mix_labels=cfg.mixup.label)
 
-    # -------- Training loop ------
     def train(epoch):
         start_time = time.time()
         print("")
