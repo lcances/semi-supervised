@@ -106,8 +106,8 @@ def run(cfg: DictConfig) -> DictConfig:
         model.train()
 
         for i, (X, y) in enumerate(train_loader):
-            X = X.cuda().float()
-            y = y.cuda().long()
+            X = X.cuda()
+            y = y.cuda()
 
             logits = model(X)
             loss = loss_ce(logits, y)
@@ -121,9 +121,9 @@ def run(cfg: DictConfig) -> DictConfig:
                 pred_arg = torch.argmax(logits, dim=1)
                 y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-                acc = acc_fn(pred_arg, y).mean(size=100)
-                fscore = fscore_fn(pred, y_one_hot).mean(size=100)
-                avg_ce = avg(loss.item()).mean(size=100)
+                acc = acc_fn(pred_arg, y).mean(size=None)
+                fscore = fscore_fn(pred, y_one_hot).mean(size=None)
+                avg_ce = avg(loss.item()).mean(size=None)
 
                 # logs
                 print(train_formater.format(
@@ -158,9 +158,9 @@ def run(cfg: DictConfig) -> DictConfig:
                 pred_arg = torch.argmax(logits, dim=1)
                 y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-                acc = acc_fn(pred_arg, y).mean(size=100)
-                fscore = fscore_fn(pred, y_one_hot).mean(size=100)
-                avg_ce = avg(loss.item()).mean(size=100)
+                acc = acc_fn(pred_arg, y).mean(size=None)
+                fscore = fscore_fn(pred, y_one_hot).mean(size=None)
+                avg_ce = avg(loss.item()).mean(size=None)
 
                 # logs
                 print(val_formater.format(
