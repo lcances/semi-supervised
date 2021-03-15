@@ -4,6 +4,10 @@ hydra:
   run:
     dir: .
 
+hardware:
+  nb_cpu: 4
+  nb_gpu: 1
+
 dataset:
   dataset: ubs8k
   num_classes: 10

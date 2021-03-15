@@ -46,7 +46,7 @@ def run(cfg: DictConfig) -> DictConfig:
         train_transform=train_transform,
         val_transform=val_transform,
 
-        num_workers=0,  # With the cache enable, it is faster to have only one worker
+        num_workers=cfg.hardware.nb_cpu,  # With the cache enable, it is faster to have run 0 worker
         pin_memory=True,
 
         verbose=1
@@ -60,6 +60,9 @@ def run(cfg: DictConfig) -> DictConfig:
     model_func = load_model(cfg.dataset.dataset, cfg.model.model)
     model = model_func(input_shape=input_shape, num_classes=cfg.dataset.num_classes)
     model = model.cuda()
+
+    if cfg.hardware.nb_cpu > 1:
+        model = nn.DataParallel(model)
 
     summary(model, input_shape)
 
