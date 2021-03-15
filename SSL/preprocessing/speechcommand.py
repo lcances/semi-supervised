@@ -32,3 +32,7 @@ def dct_aug4adv() -> Tuple[Module, Module]:
 
 def mean_teacher() -> Tuple[Module, Module]:
     return supervised()
+
+
+def fixmatch() -> Tuple[Module, Module]:
+    return supervised()

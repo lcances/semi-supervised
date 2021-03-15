@@ -16,3 +16,7 @@ def dct_aug4adv():
 
 def mean_teacher():
     return None, None
+
+
+def fixmatch():
+    return None, None

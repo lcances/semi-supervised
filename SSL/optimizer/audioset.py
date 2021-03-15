@@ -13,18 +13,17 @@ def supervised(model,
     return Adam(model.parameters(), lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad)
 
 
-def dct(model1, model2,
-        learning_rate: float = 0.001,
-        **kwargs) -> Optimizer:
-
+def dct(model1, model2, learning_rate: float = 0.001, **kwargs) -> Optimizer:
     raise NotImplementedError
 
 
-def dct_uniloss(model1, model2,
-                learning_rate: float = 0.001,
-                **kwargs) -> Optimizer:
+def dct_uniloss(model1, model2, learning_rate: float = 0.001, **kwargs) -> Optimizer:
     raise NotImplementedError
 
 
 def mean_teacher(student, learning_rate: float = 0.003, **kwargs) -> Optimizer:
     raise NotImplementedError
+
+
+def fixmatch(model, **kwargs):
+    raise supervised(model, **kwargs)

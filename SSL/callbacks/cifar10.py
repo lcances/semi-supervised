@@ -34,3 +34,8 @@ def dct_uniloss(optimizer: Optimizer) -> list:
 def mean_teacher(optimizer: Optimizer) -> list:
     lr_scheduler = LambdaLR(optimizer, lr_lambda)
     return [lr_scheduler]
+
+
+def fixmatch(optimizer: Optimizer) -> list:
+    lr_scheduler = LambdaLR(optimizer, lr_lambda)
+    return [lr_scheduler]
