@@ -82,7 +82,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
     tensorboard = mSummaryWriter(log_dir=log_dir, comment=model_func.__name__)
 
-    # -------- Optimizer, callbacks, loss and checkpoint
+    # -------- Optimizer, callbacks, loss and checkpoint --------
     optimizer = load_optimizer(cfg.dataset.dataset, "supervised", learning_rate=cfg.train_param.learning_rate, model=model)
     callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_epoch)
     loss_ce = nn.CrossEntropyLoss(reduction="mean")
