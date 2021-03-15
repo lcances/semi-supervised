@@ -132,12 +132,12 @@ class SpeechCommands(SPEECHCOMMANDS):
     @cache_feature
     def __getitem__(self, index: int) -> Tuple[Tensor, int]:
         waveform, _, label, _, _ = super().__getitem__(index)
-        
+
         data = waveform.squeeze()
         if self.transform_ is not None:
-            data = self.transform(data)
+            data = self.transform_(data)
             data = data.squeeze()
-            
+
         return data, target_mapper[label]
 
     def save_cache_to_disk(self, name) -> None:
@@ -167,9 +167,6 @@ class SpeechCommands(SPEECHCOMMANDS):
         # Recover file list for validaiton and testing.
         validation_list = file_list("validation_list.txt")
         testing_list = file_list("testing_list.txt")
-
-        # Create it for training
-        import time
         
         training_list = [
             bn2(path)
@@ -188,20 +185,19 @@ class SpeechCommands(SPEECHCOMMANDS):
                     print("%s is in both train and testing list" % p)
                     raise ValueError()
 
-
         # Map the list to the corresponding subsets
         mapper = {
             "train": training_list,
             "validation": validation_list,
             "testing": testing_list,
         }
-    
+
         self._walker = [
             os.path.join(*self.root_path, path)
             for path in mapper[self.subset]
         ]
-        
-        
+
+
 class SpeechCommandAug(SpeechCommands):
     def __init__(self,
                  root: str,
@@ -236,43 +232,6 @@ class SpeechCommandAug(SpeechCommands):
             
         return data, mapped_target
 
-        
-class SpeechCommandAug(SpeechCommands):
-    def __init__(self,
-                 root: str,
-                 subset: str = "train",
-                 url: str = URL,
-                 download: bool = False,
-                 transform: Module = None,
-                 enable_cache: bool = False,
-                 **kwargs) -> None:
-        super().__init__(root, subset, url, download, transform=None)
-
-        assert subset in ["train", "validation", "testing"]
-        self.enable_cache = enable_cache
-        self.subset = subset
-        print(f'transform from SpeechCommandAug: {self.transform}')
-        
-        self.root_path = self._walker[0].split("/")[:-2]
-        
-        # Create cached version of some methods
-        self.cached_getitem = Cacher(super().__getitem__)
-        self.cached_transform = Cacher(transform)
-
-        self._keep_valid_files()
-
-    def __getitem__(self, index: int) -> Tuple[Tensor, int]:
-        # loading waveform from disk can always be cached
-        waveform, mapped_target = self.cached_getitem(index, caching=True)
-        
-        # applying transformation
-        data = waveform
-        if self.cached_getitem.func is not None:
-            data = self.cached_transform(data, caching=self.enable_cache)
-            data = data.squeeze()
-            
-        return data, mapped_target
-    
 
 class SpeechCommandsStats(SpeechCommands):
     @classmethod
@@ -449,12 +408,11 @@ class SpeechCommand10(SpeechCommands):
             for i, st in enumerate(start_timestamps):
                 unique_id = f"{basename[:-4]}_nohash_{i}.wav"
                 path = os.path.join(silence_dir, unique_id)
-                
+
                 segment = waveform[0][st:st + sr]
                 soundfile.write(path, segment, sr)
 
         print("done")
-
 
     def _check_silence_class(self):
         silence_dir = os.path.join(*self.root_path, "silence")
@@ -592,12 +550,12 @@ def supervised(
     dataset_path = os.path.join(dataset_root)
 
     # validation subset
-    val_dataset = SpeechCommand(root=dataset_path, subset="validation",
-    transform=train_transform, download=True, percent_to_drop=0.0)
+    val_dataset = SpeechCommands(root=dataset_path, subset="validation",
+                                 transform=train_transform, download=True, percent_to_drop=0.0)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommand(
+    train_dataset = SpeechCommands(
         root=dataset_path, subset="train", transform=val_transform, download=True)
 
     if supervised_ratio == 1.0:
