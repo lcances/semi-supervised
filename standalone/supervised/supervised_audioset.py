@@ -118,14 +118,6 @@ def run(cfg: DictConfig) -> DictConfig:
 
     header, train_formater, val_formater = get_train_format('audioset-sup')
 
-    metrics = DotDict(
-        fscore_fn=FScore(),
-        acc_fn=BinaryAccuracy(),
-        avg_fn=ContinueAverage(),
-        mAP_fn=MAP()
-    )
-    maximum_tracker = track_maximum()
-
     # -------- Augmentations ---------
     spec_augmenter = SpecAugmentation(time_drop_width=cfg.specaugment.time_drop_width,
                                       time_stripes_num=cfg.specaugment.sa_time_stripe_num,
@@ -219,7 +211,7 @@ def run(cfg: DictConfig) -> DictConfig:
                     time.time() - start_time
                 ), end="\r")
 
-        T("val/Lce", avg_ce.mean(size=100), epoch)
+        ("val/Lce", avg_ce.mean(size=100), epoch)
         T("val/f1", fscore.mean(size=100), epoch)
         T("val/acc", acc.mean(size=100), epoch)
         T("val/mAP", mAP.mean(size=100), epoch)
@@ -232,7 +224,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
         return avg_ce, fscore, mAP
 
-    # -------- Save the hyper parameters and the metrics --------
+    # -------- Training loop --------
     if cfg.train_param.resume:
         checkpoint.load_last()
 
@@ -253,7 +245,7 @@ def run(cfg: DictConfig) -> DictConfig:
         # Perform train
         train_fn(e, *train_iterator.next(), start_time)
 
-    # -------- Training loop --------
+    # -------- Save the hyper parameters and the metrics --------
     hparams = {
         'dataset': cfg.dataset.dataset,
         'model': cfg.model.model,

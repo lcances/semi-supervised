@@ -95,7 +95,9 @@ def run(cfg: DictConfig) -> DictConfig:
     fscore_fn = FScore()
     acc_fn = CategoricalAccuracy()
     avg = ContinueAverage()
+
     reset_metrics = lambda: [m.reset() for m in [fscore_fn, acc_fn, avg]]
+
     maximum_tracker = track_maximum()
 
     header, train_formater, val_formater = get_train_format('supervised')
