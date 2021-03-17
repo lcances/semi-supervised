@@ -5,8 +5,9 @@ def build_mapper(modules: dict) -> dict:
         dataset_mapper[dataset_name] = {
             "supervised": dataset_module.supervised,
             "dct": dataset_module.dct,
-            "dct_uniloss": dataset_module.dct_uniloss,
+#             "dct_uniloss": dataset_module.dct_uniloss,
             "mean-teacher": dataset_module.mean_teacher,
+            'fixmatch': dataset_module.fixmatch,
         }
 
     return dataset_mapper

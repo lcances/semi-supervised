@@ -274,4 +274,8 @@ def dct_uniloss(
         val_folds: tuple = (10, ),
 
         verbose=1, **kwargs):
-    return dct(**locals())
+    pass
+
+
+def fixmatch(**kwargs):
+    pass

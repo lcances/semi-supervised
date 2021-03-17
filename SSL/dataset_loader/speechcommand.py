@@ -570,3 +570,7 @@ def supervised(
             train_dataset, batch_size=batch_size, sampler=sampler_s, **loader_args)
 
     return None, train_loader, val_loader
+
+
+def fixmatch(**kwargs):
+    pass

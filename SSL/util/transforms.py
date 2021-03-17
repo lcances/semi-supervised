@@ -1,3 +1,6 @@
+import random
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Callable
@@ -5,11 +8,14 @@ from typing import Callable
 
 class ToTensor(nn.Module):
     def __init__(self):
-        pass
+        super().__init__()
     
-    def __call__(self, x):
-        t = torch.from_numpy(x)
-        return t.float()
+    def forward(self, x):
+        if not isinstance(x, torch.Tensor):
+            t = torch.from_numpy(x)
+            return t.float()
+        
+        return x.float()
 
 
 class PadUpTo(nn.Module):
@@ -26,7 +32,7 @@ class PadUpTo(nn.Module):
 
 
 class ComposeAugmentation:
-    def __init__(self, pre_process_rule: Callable, post_process_rule: Callable, method='pick_one'):
+    def __init__(self, pre_process_rule: Callable, post_process_rule: Callable, method='pick_one', to_tensor: bool = True):
         self.pre_process = []
         self.process = []
         self.post_process = []
@@ -36,11 +42,12 @@ class ComposeAugmentation:
         self.post_process_rule = post_process_rule
 
         self.method = method
+        self.to_tensor = to_tensor
 
     def set_process(self, pool: list) -> None:
         self.process = pool
         
-    def set_augmentation_pool(self, augmentation_pool: list[Callable]) -> None:
+    def set_augmentation_pool(self, augmentation_pool: list) -> None:
         self.augmentation_pool = augmentation_pool
 
     def __call__(self, x) -> nn.Sequential:
@@ -48,7 +55,8 @@ class ComposeAugmentation:
         self.post_process = []
 
         if self.method == 'pick_one':
-            self._compose_pick_one()(x)
+            tmp_transform = self._compose_pick_one()
+            return tmp_transform(x)
         
         else:
             raise ValueError(f'Methods {self.method} doesn\'t exist.')
@@ -67,10 +75,14 @@ class ComposeAugmentation:
             self.post_process = [selected_aug]
 
         # Compose the new sequential
-        composed = nn.Sequential(
+        final_transform = [
             nn.Sequential(*self.pre_process),
             self.process,
             nn.Sequential(*self.post_process),
-        )
+        ]
+        
+        # Add convertion to tensor at the beginning if required
+        if self.to_tensor:
+            final_transform = [ToTensor()] + final_transform
 
-        return composed
+        return nn.Sequential(*final_transform)

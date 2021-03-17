@@ -303,3 +303,11 @@ def _mean_teacher_helper(
     train_loader = ZipCycle([train_s_loader, train_u_loader])
 
     return None, train_loader, val_loader
+
+
+
+# =============================================================================
+#        FIXMATCH
+# =============================================================================
+def fixmatch(**kwargs):
+    pass

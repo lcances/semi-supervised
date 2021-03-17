@@ -56,7 +56,7 @@ class Cacher:
 
 
 def get_train_format(framework: str = 'supervised'):
-    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup']
+    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup', 'audioset-fixmatch']
 
     UNDERLINE_SEQ = "\033[1;4m"
     RESET_SEQ = "\033[0m"
@@ -88,6 +88,12 @@ def get_train_format(framework: str = 'supervised'):
         value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
 
         header = header_form.format(".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc", "F1", "mAP", "Time")
+        
+    elif framework == 'audioset-fixmatch':
+        header_form = "{:<16.16} {:<5.5} - {:<5.5} / {:<5.5} - {:<7.7} {:<9.9} - {:<8.8} {:<12.12} {:<12.12} {:<12.12} {:<12.12} {:<12.12} - {:<6.6}"
+        value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
+
+        header = header_form.format(".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc_s", "F1_s", "acc_u", "F1_u", "mAP", "Time")
 
     train_form = value_form
     val_form = UNDERLINE_SEQ + value_form + RESET_SEQ

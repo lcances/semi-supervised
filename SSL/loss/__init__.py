@@ -1,11 +1,11 @@
-from loss.losses import (
+from .losses import (
     loss_sup,
     loss_cot,
     JensenShanon,
     loss_diff,
 )
 
-from loss.fixmatch import (
+from .fixmatch import (
     FixMatchLoss,
     FixMatchLossSoftReduceU,
 )

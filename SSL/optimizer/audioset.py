@@ -26,4 +26,4 @@ def mean_teacher(student, learning_rate: float = 0.003, **kwargs) -> Optimizer:
 
 
 def fixmatch(model, **kwargs):
-    raise supervised(model, **kwargs)
+    return supervised(model, **kwargs)
