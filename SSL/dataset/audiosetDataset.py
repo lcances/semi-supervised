@@ -7,7 +7,7 @@ import random
 from typing import Tuple, List
 from torch import Tensor
 from torch.nn import Module
-from torch.utils.data import Dataset, DataLoader, Sampler
+from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
 import functools
 import itertools
 from SSL.util.utils import cache_to_disk, ZipCycle
@@ -676,3 +676,79 @@ def get_supervised(version: str = "unbalanced", **kwargs):
 
         return None, s_train_loader, val_loader
     return supervised
+
+
+
+def get_fixmatch(version: str = "unbalanced", **kwargs):
+    def fixmatch(
+            dataset_root: str,
+            rdcc_nbytes: int = 512 * 1024 ** 2,
+            data_shape: tuple = (320000, ),
+            data_key: str = "waveform",
+
+            train_transform: Module = None,
+            val_transform: Module = None,
+
+            batch_size: int = 64,
+            supervised_ratio: float = 0.1,
+            unsupervised_ratio: float = None,
+            balance: bool = True,
+
+            num_workers: int = 10,
+            pin_memory: bool = False,
+            seed: int = 1234,
+
+            **kwargs) -> Tuple[DataLoader, DataLoader]:
+
+        #Dataset parameters
+        d_params = dict(
+            root=os.path.join(dataset_root, "AudioSet/hdfs/"),
+            rdcc_nbytes=rdcc_nbytes,
+            data_shape=data_shape,
+            data_key=data_key,
+        )
+
+        # Dataloader parameters
+        l_params = dict(
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+
+        # validation subset
+        print('creating validation dataset')
+        val_dataset = SingleAudioset(**d_params, version="eval", transform=val_transform)
+        val_loader = DataLoader(val_dataset, **l_params)
+
+        # Create two dataset for managing weak and strong augmentation
+        print('creating weak and strong augmented train dataset')
+        weak_transform, strong_transform = train_transform
+        train_weak_dataset = SingleAudioset(**d_params, version=version, transform=weak_transform)
+        train_strong_dataset = SingleAudioset(**d_params, version=version, transform=strong_transform)
+        
+        # Split the dataset into two S and U
+        print('spliting the dataset')
+        if unsupervised_ratio is None:
+            unsupervised_ratio = 1 - supervised_ratio
+
+        s_indexes, u_indexes = class_balance_split(train_weak_dataset,
+                                                   supervised_ratio=supervised_ratio,
+                                                   unsupervised_ratio=unsupervised_ratio,
+                                                   batch_size=batch_size,
+                                                   verbose=True)
+
+        # Create the sampler sor S and U, make use of torch generator to ensure that the samplers for U
+        # will return the same indexes
+        s_batch_sampler = SingleBalancedSampler(train_weak_dataset, s_indexes, shuffle=True)
+        u_weak_batch_sampler = SubsetRandomSampler(u_indexes, generator=torch.Generator().manual_seed(seed))
+        u_strong_batch_sampler = SubsetRandomSampler(u_indexes, generator=torch.Generator().manual_seed(seed))
+
+        print('merging dataloaders')
+        s_weak_train_loader = DataLoader(train_weak_dataset, sampler=s_batch_sampler, **l_params)
+        u_weak_train_loader = DataLoader(train_weak_dataset, sampler=u_weak_batch_sampler, **l_params)
+        u_strong_train_loader = DataLoader(train_strong_dataset, sampler=u_strong_batch_sampler, **l_params)
+
+        train_loader = ZipCycle([s_weak_train_loader, u_weak_train_loader, u_strong_train_loader])
+
+        return None, train_loader, val_loader
+    return fixmatch

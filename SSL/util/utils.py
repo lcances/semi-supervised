@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch
 import time
+import itertools
 from collections import Iterable, Sized
 from zipfile import ZipFile, ZIP_DEFLATED 
 import os
@@ -56,7 +57,7 @@ class Cacher:
 
 
 def get_train_format(framework: str = 'supervised'):
-    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup']
+    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup', 'audioset-fixmatch']
 
     UNDERLINE_SEQ = "\033[1;4m"
     RESET_SEQ = "\033[0m"
@@ -88,6 +89,12 @@ def get_train_format(framework: str = 'supervised'):
         value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
 
         header = header_form.format(".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc", "F1", "mAP", "Time")
+        
+    elif framework == 'audioset-fixmatch':
+        header_form = "{:<16.16} {:<5.5} - {:<5.5} / {:<5.5} - {:<7.7} {:<9.9} - {:<8.8} {:<12.12} {:<12.12} {:<12.12} {:<12.12} {:<12.12} - {:<6.6}"
+        value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
+
+        header = header_form.format(".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc_s", "F1_s", "acc_u", "F1_u", "mAP", "Time")
 
     train_form = value_form
     val_form = UNDERLINE_SEQ + value_form + RESET_SEQ
@@ -103,6 +110,7 @@ def cache_to_disk(path: str = None):
             path_ = key
 
             if path is not None:
+                os.makedirs(path, exist_ok=True)
                 path_ = os.path.join(path, key)
 
             # file do not exist, execute function, save result in file
@@ -142,6 +150,20 @@ def conditional_cache_v2(func):
 
     decorator.cache = dict()
 
+    return decorator
+
+
+def cache_feature(func):
+    def decorator(*args, **kwargs):
+        key = ",".join(map(str, args + tuple(kwargs.values())))
+
+        if key not in decorator.cache:
+            decorator.cache[key] = func(*args, **kwargs)
+
+        return decorator.cache[key]
+
+    decorator.cache = dict()
+    decorator.func = func
     return decorator
 
 
@@ -235,19 +257,33 @@ class ZipCycle(Iterable, Sized):
             items = []
 
             for i, _ in enumerate(cur_iters):
-                if cur_count[i] < len(self._iterables[i]):
-                    item = next(cur_iters[i])
-                    cur_count[i] += 1
-                else:
+                if cur_count[i] >= len(self._iterables[i]):
                     cur_iters[i] = iter(self._iterables[i])
-                    item = next(cur_iters[i])
-                    cur_count[i] = 1
+                    
+                item = next(cur_iters[i])
+                cur_count[i] += 1
+                
                 items.append(item)
 
             yield items
 
     def __len__(self) -> int:
         return self._len
+
+    
+class ZipCycleInfinite(ZipCycle):
+    def __init__(self, iterables: list):
+        super().__init__(iterables)
+
+    def __iter__(self) -> list:
+        infinite_iters = [itertools.cycle(it) for it in self._iterables]
+        
+        while True:
+            items = [next(inf_it) for inf_it in infinite_iters]
+            
+            yield items
+
+    
 
 
 def create_bash_crossvalidation(nb_fold: int = 10):
