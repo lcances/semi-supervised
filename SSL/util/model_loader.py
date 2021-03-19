@@ -1,14 +1,11 @@
 import SSL.models.ubs8k as u8
 import SSL.models.ubs8k_test as u8_test
-import SSL.models.cifar10 as c10
 import SSL.models.esc as esc
 import SSL.models.speechcommands as sc
-import SSL.models.gtzan as gtzan
 import SSL.models.audioset as a
 import SSL.models.ComParE2021_PRS as c
 
 import inspect
-import logging
 
 dataset_mapper = {
     "ubs8k": [u8, u8_test],
@@ -32,7 +29,6 @@ def get_model_from_name(model_name, module_list):
     for name, obj in all_members:
         if inspect.isclass(obj) or inspect.isfunction(obj):
             if obj.__name__ == model_name:
-                logging.info("Model loaded: %s" % model_name)
                 return obj
 
     # Error message if model doesn't exist for the dataset
