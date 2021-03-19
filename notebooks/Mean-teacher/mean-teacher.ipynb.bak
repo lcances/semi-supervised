@@ -1,0 +1,959 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "jupyter": {
+     "outputs_hidden": true
+    }
+   },
+   "source": [
+    "# import"
+   ]
+  },
+  {
+   "cell_type": "raw",
+   "metadata": {},
+   "source": [
+    "https://arxiv.org/pdf/1703.01780.pdf"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "%load_ext autoreload\n",
+    "%autoreload 2"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'/users/samova/lcances/.miniconda3/envs/pytorch-dev/bin/python'"
+      ]
+     },
+     "execution_count": 2,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "import sys\n",
+    "sys.executable"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "os.environ[\"MKL_NUM_THREADS\"] = \"2\"\n",
+    "os.environ[\"NUMEXPR_NU M_THREADS\"] = \"2\"\n",
+    "os.environ[\"OMP_NUM_THREADS\"] = \"2\"\n",
+    "import time\n",
+    "import pprint\n",
+    "\n",
+    "import numpy\n",
+    "import torch\n",
+    "import torch.nn as nn\n",
+    "import torch.utils.data as data\n",
+    "import torch.nn.functional as F\n",
+    "import torchvision.transforms as transforms\n",
+    "from torch.cuda.amp import autocast\n",
+    "from torch.optim.lr_scheduler import LambdaLR\n",
+    "from torch.utils.tensorboard import SummaryWriter\n",
+    "from torch.utils.data import DataLoader"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_preprocesser\n",
+    "from SSL.util.model_loader import load_model\n",
+    "from SSL.util.checkpoint import CheckPoint, mSummaryWriter\n",
+    "from SSL.util.mixup import get_mixup_fn\n",
+    "from SSL.util.utils import reset_seed, get_datetime, track_maximum, dotdict\n",
+    "from SSL.ramps import Warmup, sigmoid_rampup\n",
+    "from SSL.losses import JensenShanon\n",
+    "\n",
+    "from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "pycharm": {
+     "name": "#%% md\n"
+    }
+   },
+   "source": [
+    "# Arguments"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import argparse\n",
+    "parser = argparse.ArgumentParser()\n",
+    "parser.add_argument(\"--from_config\", default=\"\", type=str)\n",
+    "parser.add_argument(\"-d\", \"--dataset_root\", default=\"../../datasets\", type=str)\n",
+    "parser.add_argument(\"-D\", \"--dataset\", default=\"speechcommand\", type=str)\n",
+    "\n",
+    "group_t = parser.add_argument_group(\"Commun parameters\")\n",
+    "group_t.add_argument(\"-m\", \"--model\", default=\"wideresnet28_2\", type=str)\n",
+    "group_t.add_argument(\"--supervised_ratio\", default=0.1, type=float)\n",
+    "group_t.add_argument(\"--batch_size\", default=64, type=int)\n",
+    "group_t.add_argument(\"--nb_epoch\", default=200, type=int)\n",
+    "group_t.add_argument(\"--learning_rate\", default=0.003, type=float)\n",
+    "group_t.add_argument(\"--resume\", action=\"store_true\", default=False)\n",
+    "group_t.add_argument(\"--seed\", default=1234, type=int)\n",
+    "\n",
+    "group_m = parser.add_argument_group(\"Model parameters\")\n",
+    "group_m.add_argument(\"--num_classes\", default=35, type=int)\n",
+    "\n",
+    "group_u = parser.add_argument_group(\"Datasets parameters\")\n",
+    "group_u.add_argument(\"-t\", \"--train_folds\", nargs=\"+\", default=[1, 2, 3, 4, 5, 6, 7, 8, 9], type=int)\n",
+    "group_u.add_argument(\"-v\", \"--val_folds\", nargs=\"+\", default=[10], type=int)\n",
+    "\n",
+    "group_s = parser.add_argument_group(\"Student teacher parameters\")\n",
+    "group_s.add_argument(\"--ema_alpha\", default=0.999, type=float)\n",
+    "group_s.add_argument(\"--warmup_length\", default=50, type=int)\n",
+    "group_s.add_argument(\"--lambda_cost_max\", default=1, type=float)\n",
+    "group_s.add_argument(\"--teacher_noise\", default=0, type=float)\n",
+    "group_s.add_argument(\"--ccost_softmax\", action=\"store_false\", default=True)\n",
+    "group_s.add_argument(\"--ccost_method\", type=str, default=\"mse\")\n",
+    "\n",
+    "group_l = parser.add_argument_group(\"Logs\")\n",
+    "group_l.add_argument(\"--checkpoint_root\", default=\"../model_save/\", type=str)\n",
+    "group_l.add_argument(\"--tensorboard_root\", default=\"../tensorboard/\", type=str)\n",
+    "group_l.add_argument(\"--checkpoint_path\", default=\"mean-teacher\", type=str)\n",
+    "group_l.add_argument(\"--tensorboard_path\", default=\"mean-teacher\", type=str)\n",
+    "group_l.add_argument(\"--tensorboard_sufix\", default=\"\", type=str)\n",
+    "\n",
+    "args=parser.parse_args(\"\")\n",
+    "\n",
+    "tensorboard_path = os.path.join(args.tensorboard_root, args.dataset, args.tensorboard_path)\n",
+    "checkpoint_path = os.path.join(args.checkpoint_root, args.dataset, args.checkpoint_path)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Basic verification"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "available_datasets = [\"esc10\", \"ubs8k\", \"speechcommand\"]\n",
+    "available_models = [\"cnn03\", \"wideresnet28_2\", \"wideresnet28_4\", \"wideresnet28_8\"]\n",
+    "available_ccost_method = [\"mse\", \"js\"]\n",
+    "\n",
+    "assert args.dataset in available_datasets\n",
+    "assert args.model in available_models\n",
+    "assert args.ccost_method in available_ccost_method"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "tags": [
+     "re_run"
+    ]
+   },
+   "outputs": [],
+   "source": [
+    "pprint.pprint(vars(args))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "pycharm": {
+     "name": "#%% md\n"
+    }
+   },
+   "source": [
+    "# initialisation"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "tags": [
+     "re_run"
+    ]
+   },
+   "outputs": [],
+   "source": [
+    "reset_seed(args.seed)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "pycharm": {
+     "name": "#%% md\n"
+    }
+   },
+   "source": [
+    "# Prepare the dataset"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "train_transform, val_transform = load_preprocesser(args.dataset, \"mean-teacher\")\n",
+    "train_transform"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "manager, train_loader, val_loader = load_dataset(\n",
+    "    args.dataset,\n",
+    "    \"mean-teacher\",\n",
+    "    \n",
+    "    dataset_root = args.dataset_root,\n",
+    "    supervised_ratio = args.supervised_ratio,\n",
+    "    batch_size = args.batch_size,\n",
+    "    train_folds = args.train_folds,\n",
+    "    val_folds = args.val_folds,\n",
+    "\n",
+    "    train_transform=train_transform,\n",
+    "    val_transform=val_transform,\n",
+    "    \n",
+    "    num_workers=0,\n",
+    "    pin_memory=True,\n",
+    "\n",
+    "    verbose = 2\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "input_shape = tuple(train_loader._iterables[0].dataset[0][0].shape)\n",
+    "input_shape"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Prep model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "torch.cuda.empty_cache()\n",
+    "\n",
+    "model_func = load_model(args.dataset, args.model)\n",
+    "\n",
+    "student = model_func(input_shape=input_shape, num_classes = args.num_classes)\n",
+    "teacher = model_func(input_shape=input_shape, num_classes = args.num_classes)\n",
+    "\n",
+    "student = student.cuda()\n",
+    "teacher = teacher.cuda()\n",
+    "\n",
+    "# We do not need gradient for the teacher model\n",
+    "for p in teacher.parameters():\n",
+    "    p.detach()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "scrolled": true,
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "from torchsummary import summary\n",
+    "\n",
+    "s = summary(student, input_shape)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "pycharm": {
+     "name": "#%% md\n"
+    }
+   },
+   "source": [
+    "# training parameters"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# tensorboard\n",
+    "title_element = (args.model, args.supervised_ratio, get_datetime(), model_func.__name__,\n",
+    "                 args.ccost_method.upper(), args.ccost_softmax, args.teacher_noise)\n",
+    "tensorboard_title = \"%s/%sS/%s_%s_%s_%s-softmax_%s-n\" % title_element\n",
+    "\n",
+    "title_element = (args.model, args.supervised_ratio, get_datetime(), model_func.__name__,\n",
+    "                 args.ccost_method.upper(), args.ccost_softmax, args.teacher_noise)\n",
+    "checkpoint_title = \"%s/%sS/%s_%s_%s_%s-softmax_%s-n\" % title_element\n",
+    "\n",
+    "tensorboard = mSummaryWriter(log_dir=\"%s/%s\" % (tensorboard_path, tensorboard_title), comment=model_func.__name__)\n",
+    "print(os.path.join(tensorboard_path, tensorboard_title))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## optimizer & callbacks"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "optimizer = load_optimizer(args.dataset, \"mean-teacher\", student=student, learning_rate=args.learning_rate)\n",
+    "callbacks = load_callbacks(args.dataset, \"mean-teacher\", optimizer=optimizer, nb_epoch=args.nb_epoch)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "tags": [
+     "re_run"
+    ]
+   },
+   "outputs": [],
+   "source": [
+    "# losses\n",
+    "loss_ce = nn.CrossEntropyLoss(reduction=\"mean\") # Supervised loss\n",
+    "\n",
+    "if args.ccost_method == \"mse\":\n",
+    "    consistency_cost = nn.MSELoss(reduction=\"mean\") # Unsupervised loss\n",
+    "elif args.ccost_method == \"js\":\n",
+    "    consistency_cost = JensenShanon\n",
+    "        \n",
+    "lambda_cost = Warmup(args.lambda_cost_max, args.warmup_length, sigmoid_rampup)\n",
+    "callbacks += [lambda_cost]\n",
+    "\n",
+    "# Checkpoint\n",
+    "checkpoint = CheckPoint(student, optimizer, mode=\"max\", name=\"%s/%s.torch\" % (checkpoint_path, checkpoint_title))\n",
+    "\n",
+    "def get_lr(optimizer):\n",
+    "    for param_group in optimizer.param_groups:\n",
+    "        return param_group['lr']"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "consistency_cost"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Metrics definition"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def metrics_calculator():\n",
+    "    def c(logits, y):\n",
+    "        with torch.no_grad():\n",
+    "            y_one_hot = F.one_hot(y, num_classes=args.num_classes)\n",
+    "            \n",
+    "            pred = torch.softmax(logits, dim=1)\n",
+    "            arg = torch.argmax(logits, dim=1)\n",
+    "            \n",
+    "            acc = c.fn.acc(arg, y).mean\n",
+    "            f1 = c.fn.f1(pred, y_one_hot).mean\n",
+    "            \n",
+    "            return acc, f1,\n",
+    "            \n",
+    "    c.fn = dotdict(\n",
+    "        acc = CategoricalAccuracy(),\n",
+    "        f1 = FScore(),\n",
+    "    )\n",
+    "    \n",
+    "    return c"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "calc_student_s_metrics = metrics_calculator()\n",
+    "calc_student_u_metrics = metrics_calculator()\n",
+    "calc_teacher_s_metrics = metrics_calculator()\n",
+    "calc_teacher_u_metrics = metrics_calculator()\n",
+    "\n",
+    "avg_Sce = ContinueAverage()\n",
+    "avg_Tce = ContinueAverage()\n",
+    "avg_ccost = ContinueAverage()\n",
+    "\n",
+    "softmax_fn = lambda x: x\n",
+    "if args.ccost_softmax:\n",
+    "    softmax_fn = nn.Softmax(dim=1)\n",
+    "\n",
+    "def reset_metrics():\n",
+    "    for d in [calc_student_s_metrics.fn, calc_student_u_metrics.fn, calc_teacher_s_metrics.fn, calc_teacher_u_metrics.fn]:\n",
+    "        for fn in d.values():\n",
+    "            fn.reset()\n",
+    "\n",
+    "maximum_tracker = track_maximum()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "pycharm": {
+     "name": "#%% md\n"
+    }
+   },
+   "source": [
+    "## Can resume previous training"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "pycharm": {
+     "name": "#%%\n"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "if args.resume:\n",
+    "    checkpoint.load_last()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "args.resume"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "pycharm": {
+     "name": "#%% md\n"
+    }
+   },
+   "source": [
+    "## training function"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "UNDERLINE_SEQ = \"\\033[1;4m\"\n",
+    "RESET_SEQ = \"\\033[0m\"\n",
+    "\n",
+    "header_form = \"{:<8.8} {:<6.6} - {:<6.6} - {:<10.8} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} | {:<10.8} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} - {:<8.6}\"\n",
+    "value_form  = \"{:<8.8} {:<6d} - {:<6d} - {:<10.8} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} | {:<10.8} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} - {:<8.4f}\"\n",
+    "header = header_form.format(\".               \", \"Epoch\",  \"%\", \"Student:\", \"ce\", \"ccost\", \"acc_s\", \"f1_s\", \"acc_u\", \"f1_u\", \"Teacher:\", \"ce\", \"acc_s\", \"f1_s\", \"acc_u\", \"f1_u\" , \"Time\")\n",
+    "\n",
+    "train_form = value_form\n",
+    "val_form = UNDERLINE_SEQ + value_form + RESET_SEQ\n",
+    "\n",
+    "print(header)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def update_teacher_model(student_model, teacher_model, alpha, epoch):\n",
+    "    \n",
+    "    # Use the true average until the exponential average is more correct\n",
+    "    alpha = min(1 - 1 / (epoch + 1), alpha)\n",
+    "    \n",
+    "    for param, ema_param in zip(student_model.parameters(), teacher_model.parameters()):\n",
+    "        ema_param.data.mul_(alpha).add_(param.data,  alpha = 1-alpha)\n",
+    "\n",
+    "\n",
+    "noise_fn = lambda x: x\n",
+    "if args.teacher_noise != 0:\n",
+    "    n_db = args.teacher_noise\n",
+    "    noise_fn = transforms.Lambda(lambda x: x + (torch.rand(x.shape).cuda() * n_db + n_db))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "tags": [
+     "re_run"
+    ]
+   },
+   "outputs": [],
+   "source": [
+    "def train(epoch):\n",
+    "    start_time = time.time()\n",
+    "    print(\"\")\n",
+    "    \n",
+    "    nb_batch = len(train_loader)\n",
+    "\n",
+    "    reset_metrics()\n",
+    "    student.train()\n",
+    "\n",
+    "    for i, (S, U) in enumerate(train_loader):        \n",
+    "        x_s, y_s = S\n",
+    "        x_u, y_u = U\n",
+    "        \n",
+    "        x_s, x_u = x_s.cuda(), x_u.cuda()\n",
+    "        y_s, y_u = y_s.cuda(), y_u.cuda()\n",
+    "        \n",
+    "        # Predictions\n",
+    "        student_s_logits = student(x_s)        \n",
+    "        student_u_logits = student(x_u)\n",
+    "        teacher_s_logits = teacher(noise_fn(x_s))\n",
+    "        teacher_u_logits = teacher(noise_fn(x_u))\n",
+    "        \n",
+    "        # Calculate supervised loss (only student on S)\n",
+    "        loss = loss_ce(student_s_logits, y_s)\n",
+    "        \n",
+    "        # Calculate consistency cost (mse(student(x), teacher(x))) x is S + U\n",
+    "        student_logits = torch.cat((student_s_logits, student_u_logits), dim=0)\n",
+    "        teacher_logits = torch.cat((teacher_s_logits, teacher_u_logits), dim=0)\n",
+    "        ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))\n",
+    "\n",
+    "        total_loss = loss + lambda_cost() * ccost\n",
+    "        \n",
+    "        optimizer.zero_grad()\n",
+    "        total_loss.backward()\n",
+    "        optimizer.step()\n",
+    "\n",
+    "        with torch.set_grad_enabled(False):\n",
+    "            # Teacher prediction (for metrics purpose)\n",
+    "            _teacher_loss = loss_ce(teacher_s_logits, y_s)\n",
+    "            \n",
+    "            # Update teacher\n",
+    "            update_teacher_model(student, teacher, args.ema_alpha, epoch*nb_batch + i)\n",
+    "            \n",
+    "            # Compute the metrics for the student\n",
+    "            student_s_metrics = calc_student_s_metrics(student_s_logits, y_s)\n",
+    "            student_u_metrics = calc_student_u_metrics(student_u_logits, y_u)\n",
+    "            student_s_acc, student_s_f1, student_u_acc, student_u_f1 = *student_s_metrics, *student_u_metrics\n",
+    "            \n",
+    "            # Compute the metrics for the teacher\n",
+    "            teacher_s_metrics = calc_teacher_s_metrics(teacher_s_logits, y_s)\n",
+    "            teacher_u_metrics = calc_teacher_u_metrics(teacher_u_logits, y_u)\n",
+    "            teacher_s_acc, teacher_s_f1, teacher_u_acc, teacher_u_f1 = *teacher_s_metrics, *teacher_u_metrics\n",
+    "            \n",
+    "            # Running average of the two losses\n",
+    "            student_running_loss = avg_Sce(loss.item()).mean\n",
+    "            teacher_running_loss = avg_Tce(_teacher_loss.item()).mean\n",
+    "            running_ccost = avg_ccost(ccost.item()).mean\n",
+    "\n",
+    "            # logs\n",
+    "            print(train_form.format(\n",
+    "                \"Training: \", epoch + 1, int(100 * (i + 1) / nb_batch),\n",
+    "                \"\", student_running_loss, running_ccost, *student_s_metrics, *student_u_metrics,\n",
+    "                \"\", teacher_running_loss, *teacher_s_metrics, *teacher_u_metrics,\n",
+    "                time.time() - start_time\n",
+    "            ), end=\"\\r\")\n",
+    "\n",
+    "    tensorboard.add_scalar(\"train/student_acc_s\", student_s_acc, epoch)\n",
+    "    tensorboard.add_scalar(\"train/student_acc_u\", student_u_acc, epoch)\n",
+    "    tensorboard.add_scalar(\"train/student_f1_s\", student_s_f1, epoch)\n",
+    "    tensorboard.add_scalar(\"train/student_f1_u\", student_u_f1, epoch)\n",
+    "    \n",
+    "    tensorboard.add_scalar(\"train/teacher_acc_s\", teacher_s_acc, epoch)\n",
+    "    tensorboard.add_scalar(\"train/teacher_acc_u\", teacher_u_acc, epoch)\n",
+    "    tensorboard.add_scalar(\"train/teacher_f1_s\", teacher_s_f1, epoch)\n",
+    "    tensorboard.add_scalar(\"train/teacher_f1_u\", teacher_u_f1, epoch)\n",
+    "    \n",
+    "    tensorboard.add_scalar(\"train/student_loss\", student_running_loss, epoch)\n",
+    "    tensorboard.add_scalar(\"train/teacher_loss\", teacher_running_loss, epoch)\n",
+    "    tensorboard.add_scalar(\"train/consistency_cost\", running_ccost, epoch)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "tags": [
+     "re_run"
+    ]
+   },
+   "outputs": [],
+   "source": [
+    "def val(epoch):\n",
+    "    start_time = time.time()\n",
+    "    print(\"\")\n",
+    "    reset_metrics()\n",
+    "    student.eval()\n",
+    "    \n",
+    "    with torch.set_grad_enabled(False):\n",
+    "        for i, (X, y) in enumerate(val_loader):\n",
+    "            X = X.cuda()\n",
+    "            y = y.cuda()\n",
+    "\n",
+    "            # Predictions\n",
+    "            student_logits = student(X)        \n",
+    "            teacher_logits = teacher(X)\n",
+    "\n",
+    "            # Calculate supervised loss (only student on S)\n",
+    "            loss = loss_ce(student_logits, y)\n",
+    "            _teacher_loss = loss_ce(teacher_logits, y) # for metrics only\n",
+    "            ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))\n",
+    "            \n",
+    "            # Compute the metrics\n",
+    "            y_one_hot = F.one_hot(y, num_classes=args.num_classes)\n",
+    "            \n",
+    "            # ---- student ----\n",
+    "            student_metrics = calc_student_s_metrics(student_logits, y)\n",
+    "            student_acc, student_f1 = student_metrics\n",
+    "            \n",
+    "            # ---- teacher ----\n",
+    "            teacher_metrics = calc_teacher_s_metrics(teacher_logits, y)\n",
+    "            teacher_acc, teacher_f1 = teacher_metrics\n",
+    "\n",
+    "            # Running average of the two losses\n",
+    "            student_running_loss = avg_Sce(loss.item()).mean\n",
+    "            teacher_running_loss = avg_Tce(_teacher_loss.item()).mean\n",
+    "            running_ccost = avg_ccost(ccost.item()).mean\n",
+    "\n",
+    "            # logs\n",
+    "            print(val_form.format(\n",
+    "                \"Validation: \", epoch + 1, int(100 * (i + 1) / len(val_loader)),\n",
+    "                \"\", student_running_loss, running_ccost, *student_metrics, 0.0, 0.0,\n",
+    "                \"\", teacher_running_loss, *teacher_metrics, 0.0, 0.0,\n",
+    "                time.time() - start_time\n",
+    "            ), end=\"\\r\")\n",
+    "\n",
+    "    tensorboard.add_scalar(\"val/student_acc\", student_acc, epoch)\n",
+    "    tensorboard.add_scalar(\"val/student_f1\", student_f1, epoch)\n",
+    "    tensorboard.add_scalar(\"val/teacher_acc\", teacher_acc, epoch)\n",
+    "    tensorboard.add_scalar(\"val/teacher_f1\", teacher_f1, epoch)\n",
+    "    tensorboard.add_scalar(\"val/student_loss\", student_running_loss, epoch)\n",
+    "    tensorboard.add_scalar(\"val/teacher_loss\", teacher_running_loss, epoch)\n",
+    "    tensorboard.add_scalar(\"val/consistency_cost\", running_ccost, epoch)\n",
+    "    \n",
+    "    tensorboard.add_scalar(\"hyperparameters/learning_rate\", get_lr(optimizer), epoch)\n",
+    "    tensorboard.add_scalar(\"hyperparameters/lambda_cost_max\", lambda_cost(), epoch)\n",
+    "    \n",
+    "    tensorboard.add_scalar(\"max/student_acc\", maximum_tracker(\"student_acc\", student_acc), epoch )\n",
+    "    tensorboard.add_scalar(\"max/teacher_acc\", maximum_tracker(\"teacher_acc\", teacher_acc), epoch )\n",
+    "    tensorboard.add_scalar(\"max/student_f1\", maximum_tracker(\"student_f1\", student_f1), epoch )\n",
+    "    tensorboard.add_scalar(\"max/teacher_f1\", maximum_tracker(\"teacher_f1\", teacher_f1), epoch )\n",
+    "\n",
+    "    checkpoint.step(teacher_acc)\n",
+    "    for c in callbacks:\n",
+    "        c.step()\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Training"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false,
+    "jupyter": {
+     "outputs_hidden": false
+    },
+    "pycharm": {
+     "name": "#%%\n"
+    },
+    "scrolled": true,
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "print(header)\n",
+    "\n",
+    "start_epoch = checkpoint.epoch_counter\n",
+    "end_epoch = args.nb_epoch\n",
+    "\n",
+    "for e in range(start_epoch, args.nb_epoch):\n",
+    "    train(e)\n",
+    "    val(e)\n",
+    "    \n",
+    "    tensorboard.flush()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Save the hyper parameters and the metrics"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def save_source_as_img(sourcepath: str):\n",
+    "    # Create a zip file of the current source code\n",
+    "    from zipfile import ZipFile, ZIP_DEFLATED, ZIP_LZMA\n",
+    "\n",
+    "    with ZipFile(sourcepath + \".zip\", \"w\", compression=ZIP_DEFLATED, compresslevel=9) as myzip:\n",
+    "        myzip.write(sourcepath)\n",
+    "\n",
+    "    # Read the just created zip file and store it into\n",
+    "    # a uint8 numpy array\n",
+    "    with open(sourcepath + \".zip\", \"rb\") as myzip:\n",
+    "        zip_bin = myzip.read()\n",
+    "\n",
+    "    zip_bin_n = numpy.array(list(map(int, zip_bin)), dtype=numpy.uint8)\n",
+    "\n",
+    "    # Convert it into a 2d matrix\n",
+    "    desired_dimension = 500\n",
+    "    missing = desired_dimension - (zip_bin_n.size % desired_dimension)\n",
+    "    zip_bin_p = numpy.concatenate((zip_bin_n, numpy.array([0]*missing, dtype=numpy.uint8)))\n",
+    "    zip_bin_i = numpy.asarray(zip_bin_p).reshape((desired_dimension, zip_bin_p.size // desired_dimension))\n",
+    "\n",
+    "    return zip_bin_i, missing"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import matplotlib.pyplot as plt\n",
+    "source_bin, _ = save_source_as_img(\"student-teacher.ipynb\")\n",
+    "plt.imshow(source_bin)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "hparams = {}\n",
+    "for key, value in args.__dict__.items():\n",
+    "    hparams[key] = str(value)\n",
+    "    \n",
+    "final_metrics = {\n",
+    "    \"max_student_acc\": maximum_tracker.max[\"student_acc\"],\n",
+    "    \"max_teacher_acc\": maximum_tracker.max[\"teacher_acc\"],\n",
+    "    \"max_student_f1\": maximum_tracker.max[\"student_f1\"],\n",
+    "    \"max_teacher_f1\": maximum_tracker.max[\"teacher_f1\"],\n",
+    "}\n",
+    "tensorboard.add_hparams(hparams, final_metrics)\n",
+    "\n",
+    "source_code_img, padding_size = save_source_as_img(\"student-teacher.ipynb\")\n",
+    "tensorboard.add_image(\"student-teacher___%s\" % padding_size, source_code_img , 0, dataformats=\"HW\")\n",
+    "tensorboard.flush()\n",
+    "tensorboard.close()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "source_code_img.shape, source_code_img.size"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "from hashlib import md5\n",
+    "md5(source_bin.flatten()).hexdigest(), md5(source_code_img.flatten()).hexdigest()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "from PIL import Image\n",
+    "\n",
+    "im = Image.open(\"tmp-232.png\")\n",
+    "source_bin = numpy.asarray(im, dtype=numpy.uint8)\n",
+    "source_bin = source_bin[:, :, 0]\n",
+    "\n",
+    "source_bin = source_bin.flatten()[:-232]\n",
+    "\n",
+    "with open(\"student-teacher.ipynb.zip.bak\", \"wb\") as mynewzip:\n",
+    "    mynewzip.write(source_bin)\n",
+    "\n",
+    "# PROUT"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## display"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import matplotlib.pyplot as plt\n",
+    "import numpy as np\n",
+    "\n",
+    "x = list(range(checkpoint.epoch_counter))\n",
+    "sm = lambda y, w: np.convolve(y, np.ones(w)/w, mode='same')\n",
+    "pp = lambda k: plt.plot(x, tensorboard.history[k], label=f\"{k} = {max(tensorboard.history[k])}\")\n",
+    "spp = lambda k: plt.plot(x, sm(tensorboard.history[k], 5), label=f\"{k} = {max(tensorboard.history[k])}\")\n",
+    "\n",
+    "\n",
+    "plt.figure(0, figsize=(30, 14))\n",
+    "plt.subplot(2, 3, 1)\n",
+    "pp(\"max/student_acc\")\n",
+    "pp(\"max/teacher_acc\")\n",
+    "plt.legend()\n",
+    "\n",
+    "plt.subplot(2, 3, 3)\n",
+    "pp(\"hyperparameters/learning_rate\")\n",
+    "plt.legend()\n",
+    "\n",
+    "plt.show()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "pytorch-dev",
+   "language": "python",
+   "name": "pytorch-dev"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

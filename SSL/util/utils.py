@@ -57,23 +57,32 @@ class Cacher:
 
 
 def get_train_format(framework: str = 'supervised'):
-    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup', 'audioset-fixmatch']
+    assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup', 'audioset-fixmatch',
+                         'compare2021-prs-sup']
 
     UNDERLINE_SEQ = "\033[1;4m"
     RESET_SEQ = "\033[0m"
 
     if framework == 'supervised':
         header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<8.8} {:<6.6} - {:<9.9} {:<12.12}| {:<9.9}- {:<6.6}"
-        value_form  = "{:<8.8} {:<6} - {:<6} - {:<8.8} {:<6.4f} - {:<9.9} {:<10.4f}| {:<9.4f}- {:<6.4f}"
+        value_form = "{:<8.8} {:<6} - {:<6} - {:<8.8} {:<6.4f} - {:<9.9} {:<10.4f}| {:<9.4f}- {:<6.4f}"
 
         header = header_form.format(
-            ".               ", "Epoch", "%", "Losses:", "ce", "metrics: ", "acc", "F1 ","Time"
+            ".               ", "Epoch", "%", "Losses:", "ce", "metrics: ", "acc", "F1 ", "Time"
+        )
+
+    elif framework == 'supervised-compare2021-prs':
+        header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<8.8} {:<6.6} - {:<9.9} {:<12.12}| {:<9.9}- {:<6.6}"
+        value_form = "{:<8.8} {:<6} - {:<6} - {:<8.8} {:<6.4f} - {:<9.9} {:<10.4f}| {:<9.4f}- {:<6.4f}"
+
+        header = header_form.format(
+            ".               ", "Epoch", "%", "Losses:", "ce", "metrics: ", "acc", "F1", 'mAP', "Time"
         )
 
     elif framework == 'mean-teacher':
         header_form = "{:<8.8} {:<6.6} - {:<6.6} - {:<10.8} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} | {:<10.8} {:<8.6} {:<8.6} {:<8.6} {:<8.6} {:<8.6} - {:<8.6}"
         value_form = "{:<8.8} {:<6d} - {:<6d} - {:<10.8} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} | {:<10.8} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} {:<8.4f} - {:<8.4f}"
-        header = header_form.format(".               ", "Epoch",  "%", "Student:", "ce", "ccost",
+        header = header_form.format(".               ", "Epoch", "%", "Student:", "ce", "ccost",
                                     "acc_s", "f1_s", "acc_u", "f1_u", "Teacher:", "ce", "acc_s", "f1_s", "acc_u", "f1_u", "Time")
 
     elif framework == 'dct':
@@ -89,7 +98,10 @@ def get_train_format(framework: str = 'supervised'):
         value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"
 
         header = header_form.format(".               ", "Epoch", "", "", "Losses:", "ce", "metrics: ", "acc", "F1", "mAP", "Time")
-        
+
+    elif framework == 'compare2021-prs-sup':
+        return get_train_format('audioset-sup')
+
     elif framework == 'audioset-fixmatch':
         header_form = "{:<16.16} {:<5.5} - {:<5.5} / {:<5.5} - {:<7.7} {:<9.9} - {:<8.8} {:<12.12} {:<12.12} {:<12.12} {:<12.12} {:<12.12} - {:<6.6}"
         value_form = "{:<16.16} {:<5} - {:>5} / {:<5} - {:7.7} {:<9.4f} - {:<8.8} {:<12.3e} {:<12.3e} {:<12.3e} {:<12.3e} {:<12.3e} - {:<6.4f}"

@@ -35,7 +35,7 @@ def load_optimizer(dataset: str, framework: str, **kwargs):
     import SSL.optimizer.audioset as a
     import SSL.optimizer.ComParE2021_PRS as c
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s,
+    dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
                                    "audioset-balanced": a, "audioset-unbalanced": a,
                                   'compare2021_prs': c})
 
@@ -49,7 +49,7 @@ def load_preprocesser(dataset: str, framework: str, **kwargs):
     import SSL.preprocessing.audioset as a
     import SSL.preprocessing.ComParE2021_PRS as c
 
-    dataset_mapper = build_mapper({"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s,
+    dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
                                    "audioset-balanced": a, "audioset-unbalanced": a,
                                   'compare2021_prs': c})
 
@@ -69,9 +69,9 @@ def load_dataset(dataset: str, framework: str, **kwargs):
         dataset = "audioset-unbalanced"
 
     dataset_mapper = build_mapper(
-        {"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, 
+        {"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
          "audioset-balanced": a_bal, "audioset-unbalanced": a_unbal,
-        'compare2021_prs': c})
+         'compare2021_prs': c})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -88,4 +88,5 @@ def load_helper(dataset: str, framework: str, mapper: dict, **kwargs):
         available_framework = "{" + " | ".join(list(mapper[_dataset].keys()))
         raise ValueError(f"framework {_framework} is not available. Available framework are: {available_framework}")
 
+    print(f'loading dataset: {_framework} | {_dataset}')
     return mapper[_dataset][_framework](**kwargs)
