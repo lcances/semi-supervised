@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch
 import time
+import itertools
 from collections import Iterable, Sized
 from zipfile import ZipFile, ZIP_DEFLATED 
 import os
@@ -109,6 +110,7 @@ def cache_to_disk(path: str = None):
             path_ = key
 
             if path is not None:
+                os.makedirs(path, exist_ok=True)
                 path_ = os.path.join(path, key)
 
             # file do not exist, execute function, save result in file
@@ -148,6 +150,20 @@ def conditional_cache_v2(func):
 
     decorator.cache = dict()
 
+    return decorator
+
+
+def cache_feature(func):
+    def decorator(*args, **kwargs):
+        key = ",".join(map(str, args + tuple(kwargs.values())))
+
+        if key not in decorator.cache:
+            decorator.cache[key] = func(*args, **kwargs)
+
+        return decorator.cache[key]
+
+    decorator.cache = dict()
+    decorator.func = func
     return decorator
 
 
@@ -241,19 +257,33 @@ class ZipCycle(Iterable, Sized):
             items = []
 
             for i, _ in enumerate(cur_iters):
-                if cur_count[i] < len(self._iterables[i]):
-                    item = next(cur_iters[i])
-                    cur_count[i] += 1
-                else:
+                if cur_count[i] >= len(self._iterables[i]):
                     cur_iters[i] = iter(self._iterables[i])
-                    item = next(cur_iters[i])
-                    cur_count[i] = 1
+                    
+                item = next(cur_iters[i])
+                cur_count[i] += 1
+                
                 items.append(item)
 
             yield items
 
     def __len__(self) -> int:
         return self._len
+
+    
+class ZipCycleInfinite(ZipCycle):
+    def __init__(self, iterables: list):
+        super().__init__(iterables)
+
+    def __iter__(self) -> list:
+        infinite_iters = [itertools.cycle(it) for it in self._iterables]
+        
+        while True:
+            items = [next(inf_it) for inf_it in infinite_iters]
+            
+            yield items
+
+    
 
 
 def create_bash_crossvalidation(nb_fold: int = 10):

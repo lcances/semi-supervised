@@ -5,6 +5,7 @@ import SSL.models.esc as esc
 import SSL.models.speechcommands as sc
 import SSL.models.gtzan as gtzan
 import SSL.models.audioset as a
+import SSL.models.ComParE2021_PRS as c
 
 import inspect
 import logging
@@ -18,6 +19,7 @@ dataset_mapper = {
     "gtzan": [gtzan],
     "audioset-balanced": [a],
     "audioset-unbalanced": [a],
+    "compare2021_prs": [c],
 }
 
 
