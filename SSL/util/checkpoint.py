@@ -28,19 +28,19 @@ class CheckPoint:
 
     def create_directory(self):
         os.makedirs(os.path.dirname(self.name), exist_ok=True)
-        
+
     def _init_message(self):
         if self.verbose:
             print('checkpoint initialise at: ', os.path.abspath(self.name))
             print('name: ', os.path.basename(self.name))
             print('mode: ', self.mode)
 
-    def step(self, new_value):
+    def step(self, new_value, iter: int = None):
         if self.epoch_counter == 0:
             self.best_metric = new_value
 
         # Save last epoch
-        self.last_state = self._get_state(new_value)
+        self.last_state = self._get_state(new_value, iter)
         torch.save(self.last_state, self.name + ".last")
 
         # save best epoch
@@ -54,13 +54,13 @@ class CheckPoint:
 
         self.epoch_counter += 1
 
-    def _get_state(self, new_value=None) -> dict:
+    def _get_state(self, new_value=None, iter: int = None) -> dict:
         state = {
             "state_dict": [m.state_dict() for m in self.model],
             "optimizer": self.optimizer.state_dict(),
-            "epoch": self.epoch_counter,
         }
-        
+        state['epoch'] = self.epoch_counter if iter is None else iter
+
         if new_value is not None:
             state["best_metric"] = new_value
 
@@ -68,7 +68,7 @@ class CheckPoint:
 
     def save(self):
         torch.save(self._get_state, self.name + ".last")
-        
+
     def load(self, path):
         data = torch.load(path)
         self._load_helper(data, self.last_state)
