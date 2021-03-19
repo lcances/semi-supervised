@@ -520,8 +520,8 @@ def mean_teacher_helper(
     sampler_s = torch_data.SubsetRandomSampler(s_idx)
     sampler_u = torch_data.SubsetRandomSampler(u_idx)
 
-    train_s_loader = torch_data.DataLoader(train_dataset, batch_size=s_batch_size, sampler=sampler_s)
-    train_u_loader = torch_data.DataLoader(train_dataset, batch_size=u_batch_size, sampler=sampler_u)
+    train_s_loader = torch_data.DataLoader(train_dataset, batch_size=s_batch_size, sampler=sampler_s, **loader_args)
+    train_u_loader = torch_data.DataLoader(train_dataset, batch_size=u_batch_size, sampler=sampler_u, **loader_args)
 
     train_loader = ZipCycle([train_s_loader, train_u_loader])
 
