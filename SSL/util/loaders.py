@@ -7,6 +7,7 @@ def build_mapper(modules: dict) -> dict:
             "dct": dataset_module.dct,
             "dct_uniloss": dataset_module.dct_uniloss,
             "mean-teacher": dataset_module.mean_teacher,
+            'fixmatch': dataset_module.fixmatch
         }
 
     return dataset_mapper
@@ -55,13 +56,13 @@ def load_dataset(dataset: str, framework: str, **kwargs):
     import SSL.dataset_loader.speechcommand as s
     import SSL.dataset_loader.audioset_balanced as a_bal
     import SSL.dataset_loader.audioset_unbalanced as a_unbal
-    
+
     # Default dataset for audioset is the unsupervised version
     if dataset == "audioset":
         dataset = "audioset-unbalanced"
 
     dataset_mapper = build_mapper(
-        {"esc10": e, "esc50":e, "ubs8k": u, "speechcommand": s, 
+        {"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s, 
          "audioset-balanced": a_bal, "audioset-unbalanced": a_unbal})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)

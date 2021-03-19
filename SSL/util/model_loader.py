@@ -11,11 +11,11 @@ import logging
 
 dataset_mapper = {
     "ubs8k": [u8, u8_test],
-    "cifar10": [c10],
+    # "cifar10": [c10],
     "esc10": [esc],
     "esc50": [esc],
     "speechcommand": [sc],
-    "gtzan": [gtzan],
+    # "gtzan": [gtzan],
     "audioset-balanced": [a],
     "audioset-unbalanced": [a],
 }
