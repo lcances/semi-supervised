@@ -77,7 +77,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
     # -------- Tensorboard logging --------
     tensorboard_title = f'{get_datetime()}_{cfg.model.model}_{sufix_title}'
-    log_dir = f'{cfg.path.tensorboard_path}/{tensorboard_title}'
+    log_dir = f'{cfg.path.tensorboard_path}/{cfg.model.model}/{tensorboard_title}'
     print('Tensorboard log at: ', log_dir)
 
     tensorboard = mSummaryWriter(log_dir=log_dir, comment=model_func.__name__)
@@ -88,7 +88,7 @@ def run(cfg: DictConfig) -> DictConfig:
     loss_ce = nn.CrossEntropyLoss(reduction="mean")
 
     checkpoint_title = f'{cfg.model.model}_{sufix_title}'
-    checkpoint_path = f'{cfg.path.checkpoint_path}/{checkpoint_title}'
+    checkpoint_path = f'{cfg.path.checkpoint_path}/{cfg.model.model}/{checkpoint_title}'
     checkpoint = CheckPoint(model, optimizer, mode="max", name=checkpoint_path)
 
     # -------- Metrics and print formater --------
