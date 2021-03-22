@@ -17,8 +17,8 @@ model:
 
 train_param:
   supervised_ratio: 1.0
-  batch_size: 128
-  nb_iteration: 75000
+  batch_size: 32
+  nb_iteration: 50000
   learning_rate: 0.003
   seed: 1234
   resume: false
@@ -27,13 +27,13 @@ train_param:
   val_folds: null
 
 mixup:
-  use: false
+  use: true
   alpha: 1.0
-  max: false
-  label: false
+  max: true
+  label: true
 
 specaugment:
-  use: false
+  use: true
   time_drop_width: 12
   time_stripe_num: 1
   freq_drop_width: 4
