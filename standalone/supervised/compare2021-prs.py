@@ -17,13 +17,13 @@ from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, DotDict, get_train_format, get_lr
 from SSL.util.mixup import MixUpBatchShuffle
-from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage, MAP
+from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage, MAP
 from augmentation_utils.spec_augmentations import SpecAugment
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
 
-@hydra.main(config_name='../../config/supervised/compare2021_prs.yaml')
+@hydra.main(config_name='../../config/supervised/compare2021-prs.yaml')
 def run(cfg: DictConfig) -> DictConfig:
     # keep the file directory as the current working directory
     os.chdir(hydra.utils.get_original_cwd())
@@ -104,7 +104,7 @@ def run(cfg: DictConfig) -> DictConfig:
     # -------- Optimizer, callbacks, loss and checkpoint --------
     optimizer = load_optimizer(cfg.dataset.dataset, "supervised", learning_rate=cfg.train_param.learning_rate, model=model)
     callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_iteration)
-    loss_ce = nn.CrossEntropyLoss(reduction="mean")
+    loss_ce = nn.BCEWithLogitsLoss(reduction="mean")
 
     checkpoint_title = f'{cfg.model.model}_{sufix_title}'
     checkpoint_path = f'{cfg.path.checkpoint_path}/{checkpoint_title}'
@@ -113,14 +113,14 @@ def run(cfg: DictConfig) -> DictConfig:
     # -------- Metrics and print formater --------
     metrics = DotDict(
         fscore_fn=FScore(),
-        acc_fn=CategoricalAccuracy(),
+        acc_fn=BinaryAccuracy(),
         avg_fn=ContinueAverage(),
         mAP_fn=MAP()
     )
 
     val_metrics = DotDict(
         fscore_fn=FScore(),
-        acc_fn=CategoricalAccuracy(),
+        acc_fn=BinaryAccuracy(),
         avg_fn=ContinueAverage(),
         mAP_fn=MAP()
     )
@@ -149,7 +149,7 @@ def run(cfg: DictConfig) -> DictConfig:
         model.train()
 
         X = X.cuda().float()
-        y = y.cuda().long()
+        y = F.one_hot(y.cuda(), num_classes=cfg.dataset.num_classes).float()
 
         # apply augmentation if needed
         if cfg.mixup.use:
@@ -167,12 +167,12 @@ def run(cfg: DictConfig) -> DictConfig:
 
         with torch.set_grad_enabled(False):
 
-            pred = torch.softmax(logits, dim=1)
-            pred_arg = torch.argmax(logits, dim=1)
-            y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
+            pred = torch.sigmoid (logits)
+            # pred_arg = torch.argmax(logits, dim=1)
+            # y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-            acc = M.acc_fn(pred_arg, y)
-            fscore = M.fscore_fn(pred, y_one_hot)
+            acc = M.acc_fn(pred, y)
+            fscore = M.fscore_fn(pred, y)
             avg_ce = M.avg_fn(loss.item())
 
             # logs
@@ -206,21 +206,21 @@ def run(cfg: DictConfig) -> DictConfig:
         with torch.set_grad_enabled(False):
             for i, (X, y) in enumerate(val_loader):
                 X = X.cuda().float()
-                y = y.cuda().long()
+                y = F.one_hot(y.cuda(), num_classes=cfg.dataset.num_classes).float()
 
                 logits = model(X)
                 loss = loss_ce(logits, y)
 
-                pred = torch.softmax(logits, dim=1)
-                pred_arg = torch.argmax(logits, dim=1)
-                pred_one_hot = F.one_hot(pred_arg, num_classes=cfg.dataset.num_classes)
-                y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
+                pred = torch.sigmoid(logits)
+                # pred_arg = torch.argmax(logits, dim=1)
+                # pred_one_hot = F.one_hot(pred_arg, num_classes=cfg.dataset.num_classes)
+                # y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-                acc = M.acc_fn(pred_arg, y).mean()
-                fscore = M.fscore_fn(pred, y_one_hot).mean()
+                acc = M.acc_fn(pred, y).mean()
+                fscore = M.fscore_fn(pred, y).mean()
                 avg_ce = M.avg_fn(loss.item()).mean()
 
-                mAP = M.mAP_fn(pred_one_hot.cpu().reshape(-1), y_one_hot.cpu().reshape(-1)).mean()
+                mAP = M.mAP_fn(pred.cpu().reshape(-1), y.cpu().reshape(-1)).mean()
 
                 # logs
                 print(val_formater.format(
