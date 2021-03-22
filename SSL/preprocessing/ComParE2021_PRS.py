@@ -1,5 +1,4 @@
 from typing import Tuple
-import torch
 from torch.nn import Module
 from torch.nn import Sequential
 from SSL.util.transforms import PadUpTo

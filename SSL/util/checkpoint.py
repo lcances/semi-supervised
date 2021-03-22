@@ -119,10 +119,10 @@ class mSummaryWriter(SummaryWriter):
                  flush_secs=120, filename_suffix=''):
         super().__init__(log_dir, comment, purge_step, max_queue, flush_secs, filename_suffix)
         self.history = dict()
-        
+
     def add_scalar(self, tag, scalar_value, global_step=None, walltime=None):
         super().add_scalar(tag, scalar_value, global_step, walltime)
-        
+
         if tag not in self.history:
             self.history[tag] = [scalar_value]
         else:
