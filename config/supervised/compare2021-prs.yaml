@@ -9,7 +9,7 @@ hardware:
   nb_gpu: 1
 
 dataset:
-  dataset: ComParE2021_PRS
+  dataset: ComParE2021-PRS
   num_classes: 5
 
 model:

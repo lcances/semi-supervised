@@ -23,7 +23,7 @@ def load_callbacks(dataset: str, framework: str, **kwargs):
     # get the corresping function mapper
     dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
                                    "audioset-balanced": a, "audioset-unbalanced": a,
-                                  'compare2021_prs': c})
+                                  'compare2021-prs': c})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -37,7 +37,7 @@ def load_optimizer(dataset: str, framework: str, **kwargs):
 
     dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
                                    "audioset-balanced": a, "audioset-unbalanced": a,
-                                  'compare2021_prs': c})
+                                  'compare2021-prs': c})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
@@ -51,15 +51,15 @@ def load_preprocesser(dataset: str, framework: str, **kwargs):
 
     dataset_mapper = build_mapper({"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
                                    "audioset-balanced": a, "audioset-unbalanced": a,
-                                  'compare2021_prs': c})
+                                  'compare2021-prs': c})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 
 
 def load_dataset(dataset: str, framework: str, **kwargs):
     import SSL.dataset_loader.esc as e
-    import SSL.dataset_loader.ubs8k as u
     import SSL.dataset_loader.speechcommand as s
+    import SSL.dataset_loader.ubs8k as u
     import SSL.dataset_loader.audioset_balanced as a_bal
     import SSL.dataset_loader.audioset_unbalanced as a_unbal
     import SSL.dataset_loader.ComParE2021_PRS as c
@@ -71,7 +71,7 @@ def load_dataset(dataset: str, framework: str, **kwargs):
     dataset_mapper = build_mapper(
         {"esc10": e, "esc50": e, "ubs8k": u, "speechcommand": s,
          "audioset-balanced": a_bal, "audioset-unbalanced": a_unbal,
-         'compare2021_prs': c})
+         'compare2021-prs': c})
 
     return load_helper(dataset, framework, dataset_mapper, **kwargs)
 

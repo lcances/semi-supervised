@@ -16,7 +16,7 @@ dataset_mapper = {
     # "gtzan": [gtzan],
     "audioset-balanced": [a],
     "audioset-unbalanced": [a],
-    "compare2021_prs": [c],
+    "compare2021-prs": [c],
 }
 
 
