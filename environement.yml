@@ -1,4 +1,4 @@
-name: tmp
+name: ssl
 channels:
   - pytorch
   - conda-forge
@@ -221,7 +221,7 @@ dependencies:
     - aiohttp==3.7.4.post0
     - antlr4-python3-runtime==4.8
     - async-timeout==3.0.1
-    - git+https://github.com/Leocances/augmentation_utils.git@0174b36edc31a368c7abaef4a87fc59d864a09ca
+    - git+https://github.com/Leocances/augmentation_utils.git
     - git+https://github.com/Labbeti/MLU.git@29836fe8b4982e40c86c5bd1b738fc09cc4c3673
     - git+https://github.com/leocances/pytorch_metrics.git@61699381f262361a5a93c1e5a99b387a980e1d85
     - git+https://github.com/leocances/UrbanSound8K.git@6c0761d0fdd963ae44b4e3610d735169f6391440
