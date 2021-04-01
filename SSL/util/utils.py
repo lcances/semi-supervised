@@ -6,7 +6,7 @@ import torch
 import time
 import itertools
 from collections import Iterable, Sized
-from zipfile import ZipFile, ZIP_DEFLATED 
+from zipfile import ZipFile, ZIP_DEFLATED
 import os
 from typing import Callable
 import pickle
@@ -45,7 +45,7 @@ class Cacher:
 
     def cache_wrapper(self, func):
         def decorator(*args, **kwargs):
-            key = ",".join(map(str, args))
+            key = ",".join(map(str, kwargs.values()))
 
             if key not in decorator.cache:
                 decorator.cache[key] = func(*args, **kwargs)
@@ -271,10 +271,10 @@ class ZipCycle(Iterable, Sized):
             for i, _ in enumerate(cur_iters):
                 if cur_count[i] >= len(self._iterables[i]):
                     cur_iters[i] = iter(self._iterables[i])
-                    
+
                 item = next(cur_iters[i])
                 cur_count[i] += 1
-                
+
                 items.append(item)
 
             yield items
@@ -282,20 +282,20 @@ class ZipCycle(Iterable, Sized):
     def __len__(self) -> int:
         return self._len
 
-    
+
 class ZipCycleInfinite(ZipCycle):
     def __init__(self, iterables: list):
         super().__init__(iterables)
 
     def __iter__(self) -> list:
         infinite_iters = [itertools.cycle(it) for it in self._iterables]
-        
+
         while True:
             items = [next(inf_it) for inf_it in infinite_iters]
-            
+
             yield items
 
-    
+
 
 
 def create_bash_crossvalidation(nb_fold: int = 10):
@@ -345,12 +345,12 @@ def save_source_as_img(sourcepath: str):
 
 
 # from PIL import Image
-# 
+#
 # im = Image.open("tmp-232.png")
 # source_bin = numpy.asarray(im, dtype=numpy.uint8)
 # source_bin = source_bin[:, :, 0]
-# 
+#
 # source_bin = source_bin.flatten()[:-232]
-# 
+#
 # with open("student-teacher.ipynb.zip.bak", "wb") as mynewzip:
 #     mynewzip.write(source_bin)
