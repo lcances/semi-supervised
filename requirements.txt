@@ -9,7 +9,7 @@ async-generator @ file:///home/ktietz/src/ci/async_generator_1611927993394/work
 async-timeout==3.0.1
 attrs @ file:///tmp/build/80754af9/attrs_1604765588209/work
 audioread @ file:///home/conda/feedstock_root/build_artifacts/audioread_1607457396158/work
--e git+git@github.com:leocances/augmentation_utils.git@39c967275408dd6431fa9f2e493c2b3e814f8b7d#egg=augmentation_utils
+augmentation-utils @ git+https://github.com/Leocances/augmentation_utils.git@0174b36edc31a368c7abaef4a87fc59d864a09ca
 autopep8==1.5.5
 backcall @ file:///home/ktietz/src/ci/backcall_1611930011877/work
 beautifulsoup4 @ file:///home/linux1/recipes/ci/beautifulsoup4_1610988766420/work
@@ -142,7 +142,7 @@ sip==4.19.13
 six @ file:///tmp/build/80754af9/six_1605205327372/work
 SoundFile @ file:///home/conda/feedstock_root/build_artifacts/pysoundfile_1607011569782/work
 soupsieve @ file:///tmp/build/80754af9/soupsieve_1607965878077/work
--e git+git@github.com:leocances/semi-supervised.git@63a8a3db5582b7c3d8b1b4f820220875068150c6#egg=SSL
+-e git+git@github.com:leocances/semi-supervised.git@e751df9761906e18d5fad1da109b9ec7148f12e1#egg=SSL
 tensorboard==2.4.1
 tensorboard-data-server==0.5.0
 tensorboard-plugin-wit==1.8.0
