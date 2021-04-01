@@ -35,6 +35,25 @@ nb_class = {
     'audioset-balanced': 527,
 }
 
+ubs8k_folds = [
+        [[1,2,3,4,5,6,7,8,9],[10,]],
+        [[2,3,4,5,6,7,8,9,10], [1,]],
+        [[3,4,5,6,7,8,9,10,1], [2,]],
+        [[4,5,6,7,8,9,10,1,2], [3,]],
+        [[5,6,7,8,9,10,1,2,3], [4,]],
+        [[6,7,8,9,10,1,2,3,4], [5,]],
+        [[7,8,9,10,1,2,3,4,5], [6,]],
+        [[8,9,10,1,2,3,4,5,6], [7,]],
+        [[9,10,1,2,3,4,5,6,7], [8,]],
+        [[10,1,2,3,4,5,6,7,8], [9,]],
+]
+esc_folds = [
+        [[1,2,3,4], [5,]],
+        [[2,3,4,5], [1,]],
+        [[3,4,5,1], [2,]],
+        [[4,5,1,2], [3,]],
+        [[5,1,2,3], [4,]],
+]
 
 def get_script_path(method: str, dataset: str) -> str:
     path = 'supervised'
@@ -59,6 +78,25 @@ def list_file_per_date(path: str) -> list:
 def train(args):
     '''Perform training for the specified model on the specified dataset.'''
     # Automatically load the configuration file
+    config_path = os.path.join('./../..', 'config', args.method, args.dataset.lower() + '.yaml')
+    script_path = get_script_path(args.method, args.dataset)
+
+    print('Default training parameters at: ', config_path)
+    print('Executing: ', script_path)
+
+    # Prepare the parameters to override
+    override_hydra_params = args.kwargs
+    override_hydra_params += ['path.dataset_root=../datasets']
+    override_hydra_params += ['path.checkpoint_root=../model_save']
+    override_hydra_params += ['path.tensorboard_root=../tensorboard']
+
+    subprocess_params = ['python', script_path] + ['-cn', config_path] + override_hydra_params
+    subprocess.call(subprocess_params)
+
+
+def cross_validation(args):
+    '''Perform cross-validation only for the dataset that requires it'''
+    # Automatically load the configuration file
     config_path = os.path.join('./..', 'config', args.method, args.dataset + '.yaml')
     script_path = get_script_path(args.method, args.dataset)
 
@@ -67,16 +105,26 @@ def train(args):
 
     # Prepare the parameters to override
     override_hydra_params = args.kwargs
-    override_hydra_params += [f'model.model={args.model}']
     override_hydra_params += ['path.dataset_root=../datasets']
     override_hydra_params += ['path.checkpoint_root=../model_save']
     override_hydra_params += ['path.tensorboard_root=../tensorboard']
 
-    subprocess.call(['python', '-c', 'import os; print(os.getcwd())'])
-    subprocess_params = ['python', script_path] + override_hydra_params
-    print(subprocess_params)
+    # prepare the set of run
+    if args.dataset == 'ubs8k': folds = ubs8k_folds
+    elif args.dataset == 'esc10': folds = esc_folds
+    else: raise ValueError(f'there is no cross validation available for {args.dataset}')
 
-    subprocess.call(subprocess_params)
+    for i, (tf, vf) in enumerate(folds):
+        override_hydra_params += [f'train_param.train_folds={tf}']
+        override_hydra_params += [f'train_param.val_folds={vf}']
+        override_hydra_params += [f'path.sufix=run-{i}']
+
+        subprocess_params = ['python', script_path] + override_hydra_params
+        subprocess.call(subprocess_params)
+
+
+
+
 
 
 def inference(args):
@@ -139,7 +187,7 @@ def inference(args):
 
     elif args.output == 'pred':
         results = argmax(logits, dim=1)
-    
+
     print(results)
 
 
@@ -149,9 +197,13 @@ if __name__ == '__main__':
 
     parser_train = subparsers.add_parser('train')
     parser_train.add_argument('--method', type=str, choices=available_methods, default='supervised')
-    parser_train.add_argument('--model', type=str, default='MobileNetV2')
     parser_train.add_argument('--dataset', type=str, default='ubs8k')
     parser_train.add_argument('kwargs', nargs='*')
+
+    parser_cv = subparsers.add_parser('cross-validation')
+    parser_cv.add_argument('--method', type=str, choices=available_methods, default='supervised')
+    parser_cv.add_argument('--dataset', choices=['ubs8k', 'esc10'], default='ubs8k')
+    parser_cv.add_argument('kwargs', nargs='*')
 
     parser_infer = subparsers.add_parser('inference')
     parser_infer.add_argument('-f', '--file', type=str, default='')
@@ -160,7 +212,7 @@ if __name__ == '__main__':
     parser_infer.add_argument('-o', '--output', choices=['logits', 'sigmoid', 'softmax', 'pred'], default='logits')
     parser_infer.add_argument('--cuda', action='store_true', default=False)
     parser_infer.add_argument('--method', type=str, choices=available_methods, default='supervised')
-    parser_infer.add_argument('--model', type=str, default='MobileNetV2')
+    parser_infer.add_argument('--model', type=str, choices=available_models, default='wideresnet28_2')
     parser_infer.add_argument('--dataset', type=str, default='ubs8k')
     parser_infer.add_argument('kwargs', nargs='*')
 
@@ -171,6 +223,9 @@ if __name__ == '__main__':
 
     elif args.mode == 'inference':
         inference(args)
+
+    elif args.mode == 'cross-validation':
+        cross_validation(args)
 
     else:
         raise Exception('Error argument!')
