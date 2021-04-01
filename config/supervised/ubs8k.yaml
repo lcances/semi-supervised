@@ -22,6 +22,7 @@ train_param:
   learning_rate: 0.001
   seed: 1234
   resume: false
+  augmentation: null
 
   # These two parameters bellow are used for UrbanSound8k and ESC cross validation
   train_folds: [1,2,3,4,5,6,7,8,9]
@@ -33,3 +34,5 @@ path:
   tensorboard_root: ../../tensorboard
   checkpoint_path: ${path.checkpoint_root}/${dataset.dataset}/supervised
   tensorboard_path: ${path.tensorboard_root}/${dataset.dataset}/supervised
+  sufix: ''
+  weight: ''
