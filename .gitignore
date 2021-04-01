@@ -163,6 +163,7 @@ dmypy.json
 # End of https://www.toptal.com/developers/gitignore/api/pythonlogs/
 .sbatch_tmp.sh
 .hydra/
+*.log
 standalone/supervised/.hydra/
 standalone/supervised/multirun/
 standalone/mean-teacher/.hydra/
