@@ -1,13 +1,62 @@
 from ubs8k.datasetManager import DatasetManager
 from ubs8k.datasets import Dataset
-from SSL.util.utils import ZipCycle
+from SSL.util.utils import ZipCycle, Cacher
+from SSL.dataset.ubs8k import URBANSOUND8K
 from torch.nn import Module
+from tqdm import tqdm
 
 
 import os
+import random
 import numpy as np
 from copy import copy
 import torch.utils.data as torch_data
+
+
+class UrbanSound8K(URBANSOUND8K):
+    def __init__(self, root, folds, transform: Module = None, cache: bool = False):
+        super().__init__(root, folds)
+        self.transform = transform
+        self.cache = cache
+
+        self.cached_getitem = Cacher(self._cacheable_getitem)
+        self.cached_transform = Cacher(self._cacheable_transform)
+
+    def __getitem__(self, idx: int):
+        data, target = self.cached_getitem(idx=idx, caching=True)
+
+        data = self.cached_transform(data, key=idx, caching=self.cache)
+
+        return data, target
+
+    def _cacheable_getitem(self, idx: int):
+        return super().__getitem__(idx)
+
+    def _cacheable_transform(self, x, key):
+        if self.transform is not None:
+            return self.transform(x)
+
+
+def split_s_u(dataset, s_ratio: float) -> list:
+    idx_list = list(range(len(dataset.meta['filename'])))
+    s_idx, u_idx = [], []
+
+    # sort the classes
+    class_idx = [[] for _ in range(URBANSOUND8K.NB_CLASS)]
+    for idx in tqdm(idx_list):
+        class_idx[dataset.meta['target'][idx]].append(idx)
+
+    # split each class seperatly to keep distribution
+    for i in range(URBANSOUND8K.NB_CLASS):
+        random.shuffle(class_idx[i])
+
+        nb_item = len(class_idx[i])
+        nb_s = int(np.ceil(len(idx_list) * s_ratio))
+        
+        s_idx += class_idx[i][:nb_s]
+        u_idx += class_idx[i][nb_s:]
+
+    return s_idx, u_idx
 
 
 def supervised(
@@ -18,42 +67,55 @@ def supervised(
     train_folds: tuple = (1, 2, 3, 4, 5, 6, 7, 8, 9),
     val_folds: tuple = (10, ),
 
+    train_transform: Module = None,
+    val_transform: Module = None,
+    augmentation: str = None,
+
     verbose=1,
     **kwargs,
 ):
     """
     Load the UrbanSound dataset for supervised systems.
     """
+    use_cache = True
+    if augmentation is not None:
+        use_cache = False
+        print('Augmentation are used, disabling transform cache ...')
+
     audio_root = os.path.join(dataset_root, "UrbanSound8K", "audio")
     metadata_root = os.path.join(dataset_root, "UrbanSound8K", "metadata")
 
     all_folds = train_folds + val_folds
 
     # Create the dataset manager
-    manager = DatasetManager(
-        metadata_root, audio_root,
-        folds=all_folds,
-        verbose=verbose
-    )
+    # manager = DatasetManager(
+    #     metadata_root, audio_root,
+    #     folds=all_folds,
+    #     verbose=verbose
+    # )
 
     # validation subset
-    val_dataset = Dataset(manager, folds=val_folds, cached=True)
+    # val_dataset = Dataset(manager, folds=val_folds, cached=True)
+    val_dataset = UrbanSound8K(dataset_root, val_folds, transform=val_transform, cache=True)
+    print('nb file validation: ', len(val_dataset))
     val_loader = torch_data.DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 
     # training subset
-    train_dataset = Dataset(manager, folds=train_folds, cached=True)
+    # train_dataset = Dataset(manager, folds=train_folds, cached=True)
+    train_dataset = UrbanSound8K(dataset_root, train_folds, transform=train_transform, cache=use_cache)
+    print('nb file training: ', len(train_dataset))
 
     if supervised_ratio == 1.0:
         train_loader = torch_data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
     else:
-        s_idx, u_idx = train_dataset.split_s_u(supervised_ratio)
+        s_idx, u_idx = split_s_u(train_dataset, supervised_ratio)
 
         # Train loader only use the s_idx
         sampler_s = torch_data.SubsetRandomSampler(s_idx)
         train_loader = torch_data.DataLoader(train_dataset, batch_size=batch_size, sampler=sampler_s)
 
-    return manager, train_loader, val_loader
+    return None, train_loader, val_loader
 
 
 def mean_teacher(
@@ -68,7 +130,7 @@ def mean_teacher(
     **kwargs,
 ):
     assert supervised_ratio < 1.0
-    
+
     """
     Load the UrbanSound dataset for student teacher framework.
     """
@@ -78,21 +140,23 @@ def mean_teacher(
     all_folds = train_folds + val_folds
 
     # Create the dataset manager
-    manager = DatasetManager(
-        metadata_root, audio_root,
-        folds=all_folds,
-        verbose=verbose
-    )
+   #  manager = DatasetManager(
+   #      metadata_root, audio_root,
+   #      folds=all_folds,
+   #      verbose=verbose
+   #  )
 
     # validation subset
-    val_dataset = Dataset(manager, folds=val_folds, cached=True)
+    # val_dataset = Dataset(manager, folds=val_folds, cached=True)
+    val_dataset = UrbanSound8K(dataset_root, val_folds, transform=val_transform, cache=True)
     val_loader = torch_data.DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 
     # training subset
-    train_dataset = Dataset(manager, folds=train_folds, cached=True)
-    
-     # Calc the size of the Supervised and Unsupervised batch
-    s_idx, u_idx = train_dataset.split_s_u(supervised_ratio)
+    # train_dataset = Dataset(manager, folds=train_folds, cached=True)
+    train_dataset = UrbanSound8K(dataset_root, train_folds, transform=train_transform, cache=True)
+
+    # Calc the size of the Supervised and Unsupervised batch
+    s_idx, u_idx = split_s_u(train_dataset, supervised_ratio)
     nb_s_file = len(s_idx)
     nb_u_file = len(u_idx)
 
@@ -131,18 +195,20 @@ def dct(
     all_folds = train_folds + val_folds
 
     # Create the dataset manager
-    manager = DatasetManager(
-        metadata_root, audio_root,
-        folds=all_folds,
-        verbose=verbose
-    )
+   #  manager = DatasetManager(
+   #      metadata_root, audio_root,
+   #      folds=all_folds,
+   #      verbose=verbose
+   #  )
 
     # prepare the default dataset
-    train_dataset = Dataset(manager, folds=train_folds, cached=True)
-    val_dataset = Dataset(manager, folds=val_folds, cached=True)
+    #train_dataset = Dataset(manager, folds=train_folds, cached=True)
+    train_dataset = UrbanSound8K(dataset_root, train_folds, transform=train_transform, cache=True)
+    # val_dataset = Dataset(manager, folds=val_folds, cached=True)
+    val_dataset = UrbanSound8K(dataset_root, val_folds, transform=val_transform, cache=True)
 
     # split the training set into a supervised and unsupervised sets
-    s_idx, u_idx = train_dataset.split_s_u(supervised_ratio)
+    s_idx, u_idx = split_s_u(train_dataset, supervised_ratio)
 
     # Calc the size of the Supervised and Unsupervised batch
     nb_s_file = len(s_idx)
@@ -180,7 +246,7 @@ def dct_aug4adv(
 
         num_workers=4,
         verbose=1,
-    
+
         **kwargs):
     """
     Load the urbansound dataset for Deep Co Training system.
@@ -229,7 +295,7 @@ def dct_aug4adv(
 
     # split the training set into a supervised and unsupervised sets
     # Any training dataset can be used
-    s_idx, u_idx = train_dataset_m1.split_s_u(supervised_ratio)
+    s_idx, u_idx = split_s_u(train_dataset_m1, supervised_ratio)
 
     # Calc the size of the Supervised and Unsupervised batch
     nb_s_file = len(s_idx)

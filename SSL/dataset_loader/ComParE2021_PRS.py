@@ -12,41 +12,27 @@ from SSL.util.utils import cache_to_disk, ZipCycleInfinite, Cacher, cache_to_dis
 from SSL.dataset.ComParE2021_PRS import COMPARE2021_PRS
 
 
-# class ComParE2021_PRS(COMPARE2021_PRS):
-#     def __init__(self, root, subset, transform: Module = None, enable_cache: bool = False):
-#         super().__init__(root, subset)
-#         self.transform = transform
-#         self.enable_cache = enable_cache
-
-#         self.cached_getitem = Cacher(self.getitem)
-
-#     def __getitem__(self, idx: int):
-# #         return self.cached_getitem(idx, caching=self.enable_cache)
-#         return self.cached_getitem(idx, caching=False)
-
-#     def getitem(self, idx: int):
-#         data, target = super().__getitem__(idx)
-
-#         if self.transform is not None:
-#             data = self.transform(data)
-
-#         return data, target
-
-
 class ComParE2021_PRS(COMPARE2021_PRS):
-    def __init__(self, root, subset, transform: Module = None, enable_cache: bool = False):
+    def __init__(self, root, subset, transform: Module = None, cache: bool = False):
         super().__init__(root, subset)
         self.transform = transform
-        self.enable_cache = enable_cache
+        self.cache = cache
 
-    @cache_feature
+        self.cached_getitem = Cacher(self._cacheable_getitem)
+        self.cached_transform = Cacher(self._cacheable_transform)
+
     def __getitem__(self, idx: int):
-        data, target = super().__getitem__(idx)
-
-        if self.transform is not None:
-            data = self.transform(data)
+        data, target = self.cached_getitem(idx=idx, caching=True)
+        data = self.cached_transform(data, key=idx, caching=self.cache)
 
         return data, target
+
+    def _cacheable_getitem(self, idx: int):
+        return super().__getitem__(idx)
+
+    def _cacheable_transform(self, x, key):
+        if self.transform is not None:
+            return self.transform(x)
 
 
 @cache_to_disk(path='.ComParE2021_PRS')
@@ -195,6 +181,7 @@ def supervised(dataset_root,
 
                train_transform: Module = None,
                val_transform: Module = None,
+               augmentation: str = None,
 
                num_workers: int = 5,
                pin_memory: bool = False,
@@ -202,16 +189,19 @@ def supervised(dataset_root,
 
                **kwargs) -> Tuple[DataLoader, DataLoader]:
 
+    use_cache = True
+    if augmentation is not None:
+        use_cache = False
+        print('Augmentation are used, disabling transform cache ...')
+        
     loader_args = {
         'num_workers': num_workers,
         'pin_memory': pin_memory,
     }
 
     # Training subset
-    train_dataset = ComParE2021_PRS(
-        root=dataset_root, subset='train', transform=train_transform)
-    s_idx, u_idx = class_balance_split(
-        train_dataset, supervised_ratio, batch_size=batch_size, seed=seed)
+    train_dataset = ComParE2021_PRS(root=dataset_root, subset='train', transform=train_transform, cache=use_cache)
+    s_idx, u_idx = class_balance_split(train_dataset, supervised_ratio, batch_size=batch_size, seed=seed)
 
     s_batch_size = int(numpy.floor(batch_size * supervised_ratio))
     # u_batch_size = int(numpy.ceil(batch_size * (1 - supervised_ratio)))
@@ -227,7 +217,7 @@ def supervised(dataset_root,
     train_loader = train_s_loader
 
     # validation subset
-    val_dataset = ComParE2021_PRS(root=dataset_root, subset='devel', transform=val_transform)
+    val_dataset = ComParE2021_PRS(root=dataset_root, subset='devel', transform=val_transform, cache=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, **loader_args)
 
     return None, train_loader, val_loader

@@ -118,41 +118,36 @@ class SpeechCommands(SPEECHCOMMANDS):
                  url: str = URL,
                  download: bool = False,
                  transform: Module = None,
+                 cache: bool = False,
                  **kwargs) -> None:
         super().__init__(root, url, download)
 
         assert subset in ["train", "validation", "testing"]
         self.subset = subset
         self.transform_ = transform
+        self.cache = cache
         self.root_path = self._walker[0].split("/")[:-2]
-        print(f'transform from SpeechCommands: {transform}')
 
         self._keep_valid_files()
 
-    @cache_feature
-    def __getitem__(self, index: int) -> Tuple[Tensor, int]:
-        waveform, _, label, _, _ = super().__getitem__(index)
+        # Prepare the cached method
+        self.cached_getitem = Cacher(self._cacheable_getitem)
+        self.cached_transform = Cacher(self._cacheable_transform)
 
-        data = waveform.squeeze()
-        if self.transform_ is not None:
-            data = self.transform_(data)
-            data = data.squeeze()
+    def __getitem__(self, idx: int) -> Tuple[Tensor, int]:
+        data, label = self.cached_getitem(idx=idx, caching=True)
+        data = self.cached_transform(data, key=idx, caching=self.cache)
 
         return data, target_mapper[label]
 
-    def save_cache_to_disk(self, name) -> None:
-        path = os.path.join(self._path, f"{name}_features.cache")
-        torch.save(self.__getitem__.cache, path)
+    def _cacheable_getitem(self, idx: int):
+        waveform, _, label, _, _ = super().__getitem__(idx)
+        return waveform, label
 
-    def load_cache_from_disk(self, name) -> bool:
-        path = os.path.join(self._path, f"{name}_features.cache")
-
-        if os.path.isfile(path):
-            disk_cache = torch.load(path)
-            self.__getitem__.cache.update(disk_cache)
-            return True
-
-        return False
+    def _cacheable_transform(self, x, key):
+        if self.transform_ is not None:
+            return self.transform_(x)
+        return x
 
     def _keep_valid_files(self):
         bn = os.path.basename
@@ -196,7 +191,6 @@ class SpeechCommands(SPEECHCOMMANDS):
             os.path.join(*self.root_path, path)
             for path in mapper[self.subset]
         ]
-
 
 class SpeechCommandAug(SpeechCommands):
     def __init__(self,
@@ -538,25 +532,40 @@ def supervised(
 
         train_transform: Module = None,
         val_transform: Module = None,
+        augmentation: str = None,
+
+        num_workers: int = 0,
+        pin_memory: bool = False,
 
         **kwargs) -> Tuple[DataLoader, DataLoader]:
     """
     Load the SppechCommand for a supervised training
     """
-    loader_args = dict(
-        num_workers=kwargs.get("num_workers", 0),
-        pin_memory=kwargs.get("pin_memory", False),
-    )
+    use_cache = True
+    if augmentation is not None:
+        use_cache = False
+        print('Augmentation are used, disabling transform cache ...')
+
+    loader_args = {
+        'num_workers': num_workers,
+        'pin_memory': pin_memory
+    }
     dataset_path = os.path.join(dataset_root)
 
     # validation subset
     val_dataset = SpeechCommands(root=dataset_path, subset="validation",
-                                 transform=train_transform, download=True, percent_to_drop=0.0)
+                                 transform=val_transform,
+                                 cache=True,
+                                 download=True,
+                                 percent_to_drop=0.0)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, **loader_args)
 
     # Training subset
-    train_dataset = SpeechCommands(
-        root=dataset_path, subset="train", transform=val_transform, download=True)
+    train_dataset = SpeechCommands(root=dataset_path,
+                                   subset="train",
+                                   transform=train_transform,
+                                   cache=use_cache,
+                                   download=True)
 
     if supervised_ratio == 1.0:
         train_loader = DataLoader(
@@ -566,8 +575,7 @@ def supervised(
         s_idx, u_idx = _split_s_u(train_dataset, supervised_ratio)
 
         sampler_s = SubsetRandomSampler(s_idx)
-        train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, sampler=sampler_s, **loader_args)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler_s, **loader_args)
 
     return None, train_loader, val_loader
 
