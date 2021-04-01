@@ -75,27 +75,30 @@ def run(cfg: DictConfig) -> DictConfig:
     sufix_title = ''
     sufix_title += f'_{cfg.train_param.learning_rate}-lr'
     sufix_title += f'_{cfg.train_param.supervised_ratio}-sr'
-    sufix_title += f'_{cfg.train_param.nb_iteration}-e'
     sufix_title += f'_{cfg.train_param.batch_size}-bs'
     sufix_title += f'_{cfg.train_param.seed}-seed'
+    sufix_title += f'_{cfg.train_param.augmentation}-aug'
 
     # mixup parameters
+    sufix_mixup = ''
     if cfg.mixup.use:
-        sufix_title += '_mixup'
-        if cfg.mixup.max: sufix_title += "-max"
-        if cfg.mixup.label: sufix_title += "-label"
-        sufix_title += f"-{cfg.mixup.alpha}-a"
+        sufix_mixup = '_mixup'
+        if cfg.mixup.max: sufix_mixup += "-max"
+        if cfg.mixup.label: sufix_mixup += "-label"
+        sufix_mixup += f"-{cfg.mixup.alpha}-a"
 
     # SpecAugment parameters
+    sufix_sa=''
     if cfg.specaugment.use:
-        sufix_title += '_specAugment'
-        sufix_title += f'-{cfg.specaugment.time_drop_width}-tdw'
-        sufix_title += f'-{cfg.specaugment.time_stripe_num}-tsn'
-        sufix_title += f'-{cfg.specaugment.freq_drop_width}-fdw'
-        sufix_title += f'-{cfg.specaugment.freq_stripe_num}-fsn'
+        sufix_sa = '_specAugment'
+        sufix_sa += f'-{cfg.specaugment.time_drop_width}-tdw'
+        sufix_sa += f'-{cfg.specaugment.time_stripe_num}-tsn'
+        sufix_sa += f'-{cfg.specaugment.freq_drop_width}-fdw'
+        sufix_sa += f'-{cfg.specaugment.freq_stripe_num}-fsn'
 
     # -------- Tensorboard logging --------
-    tensorboard_title = f'{get_datetime()}_{cfg.model.model}_{sufix_title}'
+    tensorboard_sufix = sufix_title + f'_{cfg.train_param.nb_iteration}-e' + sufix_mixup + sufix_sa + f'__{cfg.path.sufix}'
+    tensorboard_title = f'{get_datetime()}_{cfg.model.model}_{tensorboard_sufix}'
     log_dir = f'{cfg.path.tensorboard_path}/{cfg.model.model}/{tensorboard_title}'
     print('Tensorboard log at: ', log_dir)
 
@@ -106,7 +109,8 @@ def run(cfg: DictConfig) -> DictConfig:
     callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_iteration)
     loss_ce = nn.BCEWithLogitsLoss(reduction="mean")
 
-    checkpoint_title = f'{cfg.model.model}_{sufix_title}'
+    checkpoint_sufix = sufix_title + sufix_mixup + sufix_sa + f'__{cfg.path.sufix}'
+    checkpoint_title = f'{cfg.model.model}_{checkpoint_sufix}'
     checkpoint_path = f'{cfg.path.checkpoint_path}/{cfg.model.model}/{checkpoint_title}'
     checkpoint = CheckPoint(model, optimizer, mode="max", name=checkpoint_path)
 

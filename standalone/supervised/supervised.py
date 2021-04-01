@@ -30,7 +30,7 @@ def run(cfg: DictConfig) -> DictConfig:
     reset_seed(cfg.train_param.seed)
 
     # -------- Get the pre-processer --------
-    train_transform, val_transform = load_preprocesser(cfg.dataset.dataset, "supervised")
+    train_transform, val_transform = load_preprocesser(cfg.dataset.dataset, "supervised", use_augmentation=cfg.train_param.augmentation)
 
     # -------- Get the dataset --------
     _, train_loader, val_loader = load_dataset(
@@ -45,6 +45,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
         train_transform=train_transform,
         val_transform=val_transform,
+        augmentation=cfg.train_param.augmentation,
 
         num_workers=cfg.hardware.nb_cpu,  # With the cache enable, it is faster to have run 0 worker
         pin_memory=True,
@@ -71,12 +72,14 @@ def run(cfg: DictConfig) -> DictConfig:
     sufix_title = ''
     sufix_title += f'_{cfg.train_param.learning_rate}-lr'
     sufix_title += f'_{cfg.train_param.supervised_ratio}-sr'
-    sufix_title += f'_{cfg.train_param.nb_epoch}-e'
     sufix_title += f'_{cfg.train_param.batch_size}-bs'
     sufix_title += f'_{cfg.train_param.seed}-seed'
+    sufix_title += f'_{cfg.train_param.augmentation}-aug'
 
     # -------- Tensorboard logging --------
-    tensorboard_title = f'{get_datetime()}_{cfg.model.model}_{sufix_title}'
+    tensorboard_sufix = sufix_title + f'_{cfg.train_param.nb_epoch}-e'
+    tensorboard_sufix += f'__{cfg.path.sufix}'
+    tensorboard_title = f'{get_datetime()}_{cfg.model.model}_{tensorboard_sufix}'
     log_dir = f'{cfg.path.tensorboard_path}/{cfg.model.model}/{tensorboard_title}'
     print('Tensorboard log at: ', log_dir)
 
@@ -87,7 +90,8 @@ def run(cfg: DictConfig) -> DictConfig:
     callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_epoch)
     loss_ce = nn.CrossEntropyLoss(reduction="mean")
 
-    checkpoint_title = f'{cfg.model.model}_{sufix_title}'
+    checkpoint_sufix = sufix_title + f'__{cfg.path.sufix}'
+    checkpoint_title = f'{cfg.model.model}_{checkpoint_sufix}'
     checkpoint_path = f'{cfg.path.checkpoint_path}/{cfg.model.model}/{checkpoint_title}'
     checkpoint = CheckPoint(model, optimizer, mode="max", name=checkpoint_path)
 
@@ -111,8 +115,8 @@ def run(cfg: DictConfig) -> DictConfig:
         model.train()
 
         for i, (X, y) in enumerate(train_loader):
-            X = X.cuda()
-            y = y.cuda()
+            X = X.cuda().float()
+            y = y.cuda().long()
 
             logits = model(X)
             loss = loss_ce(logits, y)
@@ -186,9 +190,7 @@ def run(cfg: DictConfig) -> DictConfig:
         tensorboard.add_scalar("max/acc", maximum_tracker("acc", acc), epoch)
         tensorboard.add_scalar("max/f1", maximum_tracker("f1", fscore), epoch)
 
-        checkpoint.step(acc)
-        for c in callbacks:
-            c.step()
+        return acc
 
     # -------- Training loop --------
     print(header)
@@ -201,7 +203,13 @@ def run(cfg: DictConfig) -> DictConfig:
 
     for e in range(start_epoch, end_epoch):
         train(e)
-        val(e)
+        acc = val(e)
+
+        # Callbacks and checkpoint
+        for c in callbacks:
+            c.step()
+
+        checkpoint.step(acc, e)
 
         tensorboard.flush()
 
