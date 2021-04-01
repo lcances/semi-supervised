@@ -1,38 +1,39 @@
+from typing import Tuple
 from torch.nn import Sequential
 from torch.nn import Module
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 
-from typing import Tuple
+from SSL.util.augments import create_composer, augmentation_factory
 
-commun_transforms = Sequential(
-    MelSpectrogram(sample_rate=44100, n_fft=2048,
-                   hop_length=512, n_mels=64),
+aug_pool = augmentation_factory('weak', ratio=0.5, sr=44100)
+
+spec_transforms = Sequential(
+    MelSpectrogram(sample_rate=44100, n_fft=2048, hop_length=512, n_mels=64),
     AmplitudeToDB(),
 )
 
 
-def supervised() -> Tuple[Module, Module]:
-    train_transform = commun_transforms
-    val_transform = commun_transforms
-
+def supervised(use_augmentation: bool = False) -> Tuple[Module, Module]:
+    train_transform = create_composer(use_augmentation, aug_pool, spec_transforms)
+    val_transform = create_composer(False, aug_pool, spec_transforms)
     return train_transform, val_transform
 
 
-def dct() -> Tuple[Module, Module]:
-    return supervised()
+def dct(use_augmentation: bool = False) -> Tuple[Module, Module]:
+    return supervised(use_augmentation)
 
 
-def dct_uniloss() -> Tuple[Module, Module]:
-    return supervised()
+def dct_uniloss(use_augmentation: bool = False) -> Tuple[Module, Module]:
+    return supervised(use_augmentation)
 
 
-def dct_aug4adv() -> Tuple[Module, Module]:
+def dct_aug4adv(use_augmentation: bool = False) -> Tuple[Module, Module]:
     raise NotImplementedError
 
 
-def mean_teacher() -> Tuple[Module, Module]:
-    return supervised()
+def mean_teacher(use_augmentation: bool = False) -> Tuple[Module, Module]:
+    return supervised(use_augmentation)
 
 
-def fixmatch() -> Tuple[Module, Module]:
-    return supervised()
+def fixmatch(use_augmentation: bool = False) -> Tuple[Module, Module]:
+    return supervised(use_augmentation)
