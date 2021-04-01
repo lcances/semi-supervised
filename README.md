@@ -3,12 +3,12 @@
 Application of Deep Co-Training for audio tagging on several audio dataset.
 
 # Requirements
-- **automatically**
+## Automatically
 ```bash
 pip install -r requirements.txt
 ```
 
-- **manually**
+## Manually
 ```bash
 conda create -n dct python=3 pip
 conda activate dct
@@ -32,6 +32,7 @@ cd Deep-Co-Training
 pip install -e .
 ```
 
+<!--
 ## Fix missing package
 - It is very likely that the `ubs8k` will be missing. It a code to manage the UrbanSound8K dataset I wrote almost two years ago before I start using `torchaudio`.
 - `pytorch_metrics` is a basic package I wrote to handle many of the metrics I used during my experiments.
@@ -42,14 +43,7 @@ pip install --upgrade git+https://github.com/leocances/pytorch_metrics.git@v2
 pip install --upgrade git+https://github.com/leocances/augmentation_utils.git
 ```
 I am planning on release a much cleaner implementation that follow the torchaudio rules.
-
-# Reproducability
-In order to reproduce the best results from the experiments, a set of configuration files are already written
-with the best parameters values for each dataset and framework. 
-See *DCT/util/config* directory for more detail.
-
-The configuration files are written in YAML format and are easy to read. However need to follow some rules.
-More detail can be found in their dedicated README file. (DCT/util/config/README.md)
+-->
 
 ## Reproduce full supervised learning for UrbanSound8k dataset
 ```bash
@@ -107,7 +101,10 @@ This documentation is more for my personnal use and is not exaustif yet. It is b
         -o softmax \
         -f ../datasets/ComParE2021-PRS/dist/devel_00001.wav \
         -w ../model_save/ComParE2021-PRS/supervised/wideresnet28_2/wideresnet28_2__0.003-lr_1.0-sr_50000-e_32-bs_1234-seed.best
-    ``` 
+    ```
+
+- **cross-validation**
+    - WIP    
 
 
 ## Available models
