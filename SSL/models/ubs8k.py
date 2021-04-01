@@ -7,6 +7,15 @@ from ubs8k.datasetManager import DatasetManager, conditional_cache_v2
 from SSL.layers import ConvPoolReLU, ConvReLU, ConvBNReLUPool, ConvAdvBNReLUPool
 
 
+# =============================================================================
+#    MobileNet
+# =============================================================================
+from SSL.models.audioset import (
+    cnn14,
+    MobileNetV1,
+    MobileNetV2,
+)
+
 class cnn(nn.Module):
     def __init__(self, **kwargs):
         nn.Module.__init__(self)

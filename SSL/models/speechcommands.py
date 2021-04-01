@@ -55,3 +55,13 @@ def wideresnet28_4(**kwargs):
 def wideresnet28_8(**kwargs):
     num_classes = kwargs.get("num_classes", 10)
     return mWideResnet([4, 4, 4], num_classes=num_classes, width=8)
+
+
+# =============================================================================
+#    MobileNet
+# =============================================================================
+from SSL.models.audioset import (
+    cnn14,
+    MobileNetV1,
+    MobileNetV2,
+)

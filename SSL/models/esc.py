@@ -6,6 +6,15 @@ from SSL.models.ubs8k import cnn0
 from SSL.models.ubs8k_test import cnn03, cnn06
 
 # =============================================================================
+#    MobileNet
+# =============================================================================
+from SSL.models.audioset import (
+    cnn14,
+    MobileNetV1,
+    MobileNetV2,
+)
+
+# =============================================================================
 #    PyTorch RESNET
 # =============================================================================
 import torchvision.models as torch_models
