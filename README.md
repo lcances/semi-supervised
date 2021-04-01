@@ -3,11 +3,17 @@
 Application of Deep Co-Training for audio tagging on several audio dataset.
 
 # Requirements
-## Automatically
 ```bash
-pip install -r requirements.txt
-```
+git clone https://github.com/leocances/semi-supervised.git
 
+cd semi-supervised
+conda env create -f environement.ym
+conda activate ssl
+
+pip install -e .
+
+```
+<!--
 ## Manually
 ```bash
 conda create -n dct python=3 pip
@@ -31,8 +37,6 @@ pip install tensorboard
 cd Deep-Co-Training
 pip install -e .
 ```
-
-<!--
 ## Fix missing package
 - It is very likely that the `ubs8k` will be missing. It a code to manage the UrbanSound8K dataset I wrote almost two years ago before I start using `torchaudio`.
 - `pytorch_metrics` is a basic package I wrote to handle many of the metrics I used during my experiments.
