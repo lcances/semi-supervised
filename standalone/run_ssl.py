@@ -9,9 +9,6 @@ from torchaudio import load as ta_load
 from SSL.util.checkpoint import CheckPoint
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_optimizer, load_preprocesser
-from SSL.dataset.dirDataset import DirDataset
-from mlu.metrics import Metric, CategoricalAccuracy, UAR, AveragePrecision
-from metric_utils.metrics import FScore
 
 
 available_methods = [
