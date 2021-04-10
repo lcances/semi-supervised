@@ -9,6 +9,10 @@ from torchaudio import load as ta_load
 from SSL.util.checkpoint import CheckPoint
 from SSL.util.model_loader import load_model
 from SSL.util.loaders import load_optimizer, load_preprocesser
+from SSL.dataset.dirDataset import DirDataset
+from mlu.metrics import Metric, CategoricalAccuracy, UAR, AveragePrecision
+from metric_utils.metrics import FScore
+
 
 available_methods = [
     'supervised',
@@ -23,7 +27,9 @@ available_models = [
     'ScalableCnn', 'cnn', 'cnn0', 'cnn_advBN', 'scallable1',
     'resnet18', 'resnet34', 'resnet50', 'wideresnet28_2', 'wideresnet28_4', 'wideresnet28_8',
     'cnn0', 'cnn01', 'cnn02', 'cnn03', 'cnn04', 'cnn05', 'cnn06', 'cnn07', 'cnn1',
-    'cnn2', 'cnn3', 'cnn4', 'cnn5', 'cnn6', 'cnn61', 'cnn7']
+    'cnn2', 'cnn3', 'cnn4', 'cnn5', 'cnn6', 'cnn61', 'cnn7',
+    'MobileNetV1', 'MobileNetV2']
+
 
 nb_class = {
     'ubs8k': 10,
@@ -123,74 +129,6 @@ def cross_validation(args):
         subprocess.call(subprocess_params)
 
 
-
-
-
-
-def inference(args):
-    ''' Will load the specified model trained with the specified methods on
-    the specified dataset.
-    '''
-
-    if args.file == '' and args.dir == '':
-        raise RuntimeError(
-            'You must specified an audiofile or a directory containing audiofiles'
-        )
-
-    weight_path = os.path.join('../', 'model_save', args.dataset, args.method, args.model)
-
-    # If no weight file specified, use the most recent one
-    if args.weights == '':
-        date_sorted_weights = list_file_per_date(weight_path)
-        weight_path = date_sorted_weights[-1][1]
-
-        print('No weights file specified.')
-        print('Using the most recent compatible weight_file')
-        print('file: ', os.path.basename(date_sorted_weights[-1][1]))
-
-    else:
-        pass
-
-    # Load the transforms, the model and the checkpoint
-    print('Loading pre-processing ...')
-    _, transform = load_preprocesser(args.dataset, args.method)
-
-    print('Loading model ...')
-    model_func = load_model(args.dataset, args.model)
-    model = model_func(num_classes=nb_class[args.dataset.lower()])
-
-    print('Loading weights ...')
-    optimizer = load_optimizer(args.dataset, args.method, model=model, learning_rate=0.003)
-    checkpoint = CheckPoint(model, optimizer, mode="max", name=weight_path)
-    checkpoint.load_best()
-
-    print('Loadind file and applying preprocessing ...')
-    waveform, sr = ta_load(args.file)
-    data = transform(waveform)
-    data = data.unsqueeze(0)
-
-    if args.cuda:
-        print('Moving model to GPU')
-        model = model.cuda()
-        data = data.cuda()
-
-    logits = model(data)
-
-    if args.output == 'logits':
-        results = logits
-
-    elif args.output == 'sigmoid':
-        results = sigmoid(logits)
-
-    elif args.output == 'softmax':
-        results = softmax(logits, dim=1)
-
-    elif args.output == 'pred':
-        results = argmax(logits, dim=1)
-
-    print(results)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='List of possible action')
     subparsers = parser.add_subparsers(dest='mode')
@@ -205,24 +143,10 @@ if __name__ == '__main__':
     parser_cv.add_argument('--dataset', choices=['ubs8k', 'esc10'], default='ubs8k')
     parser_cv.add_argument('kwargs', nargs='*')
 
-    parser_infer = subparsers.add_parser('inference')
-    parser_infer.add_argument('-f', '--file', type=str, default='')
-    parser_infer.add_argument('-d', '--dir', type=str, default='')
-    parser_infer.add_argument('-w', '--weights', type=str, default='')
-    parser_infer.add_argument('-o', '--output', choices=['logits', 'sigmoid', 'softmax', 'pred'], default='logits')
-    parser_infer.add_argument('--cuda', action='store_true', default=False)
-    parser_infer.add_argument('--method', type=str, choices=available_methods, default='supervised')
-    parser_infer.add_argument('--model', type=str, choices=available_models, default='wideresnet28_2')
-    parser_infer.add_argument('--dataset', type=str, default='ubs8k')
-    parser_infer.add_argument('kwargs', nargs='*')
-
     args = parser.parse_args()
 
     if args.mode == 'train':
         train(args)
-
-    elif args.mode == 'inference':
-        inference(args)
 
     elif args.mode == 'cross-validation':
         cross_validation(args)
