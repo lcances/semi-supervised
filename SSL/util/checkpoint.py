@@ -1,4 +1,5 @@
 from torch.utils.tensorboard import SummaryWriter
+from collections import OrderedDict
 import torch
 import os
 
@@ -23,11 +24,16 @@ class CheckPoint:
         if not isinstance(self.model, list):
             self.model = [self.model]
 
-        self.create_directory()
+        self._create_directory()
         self._init_message()
+        self._init_state()
 
-    def create_directory(self):
+    def _create_directory(self):
         os.makedirs(os.path.dirname(self.name), exist_ok=True)
+
+    def _init_state(self):
+        self.best_state = {'state_dict': None, 'optimizer': None, 'epoch': None}
+        self.last_state = {'state_dict': None, 'optimizer': None, 'epoch': None}
 
     def _init_message(self):
         if self.verbose:
@@ -69,10 +75,15 @@ class CheckPoint:
     def save(self):
         torch.save(self._get_state, self.name + ".last")
 
-    def load(self, path):
+    def load(self, path, model_only: bool = False):
         data = torch.load(path)
-        self._load_helper(data, self.last_state)
-        self._load_helper(data, self.best_state)
+        print(data.keys())
+
+        if not model_only:
+            self._load_helper(data, self.last_state)
+            self._load_helper(data, self.best_state)
+        else:
+            self._load_model_only(data)
 
     def load_best(self):
         if not os.path.isfile(self.name + ".best"):
@@ -106,6 +117,13 @@ class CheckPoint:
         for i in range(len(self.model)):
             self.model[i].load_state_dict(destination["state_dict"][i])
 
+    def _load_model_only(self, state):
+        for i in range(len(self.model)):
+            state["state_dict"][i] = self._clean_state_dict(state["state_dict"][i])
+
+        for i in range(len(self.model)):
+            self.model[i].load_state_dict(state["state_dict"][i])
+
     def _check_is_better(self, new_value):
         if self.best_metric is None:
             self.best_metrics = new_value
@@ -113,6 +131,15 @@ class CheckPoint:
 
         return self.best_metric < new_value
 
+    def _clean_state_dict(self, state_dict) -> OrderedDict:
+        new_state_dict = OrderedDict()
+        for name, v in state_dict.items():
+            if 'module.' in name[:7]:
+                name = name[7:] # remove `module.`
+
+            new_state_dict[name] = v
+
+        return new_state_dict
     
 class mSummaryWriter(SummaryWriter):
     def __init__(self, log_dir=None, comment='', purge_step=None, max_queue=10,
