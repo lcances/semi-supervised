@@ -18,7 +18,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 
-@hydra.main(config_name='../../config/supervised/supervised.yaml')
+@hydra.main(config_name='../../config/supervised/audioset.yaml')
 def run(cfg: DictConfig) -> DictConfig:
     # keep the file directory as the current working directory
     os.chdir(hydra.utils.get_original_cwd())
