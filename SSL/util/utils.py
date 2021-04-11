@@ -56,6 +56,31 @@ class Cacher:
         return decorator
 
 
+def get_training_printers(losses: dict, metrics: dict):
+    assert isinstance(losses, dict)
+    assert isinstance(metrics, dict)
+
+    UNDERLINE_SEQ = "\033[1;4m"
+    RESET_SEQ = "\033[0m"
+
+    text_form = (': epoch {:<6.6} ({:<6.6}/{:>6.6}) - '
+               + '{:<8.8}' * len(losses)
+               + ' | '
+               + '{:<8.8}' * len(metrics)
+               + '{:<6.6}')  # time
+
+    value_form = (': epoch {:<6d} ({:<6d}/{:>6d}) - '
+               + '{:<8.4f}' * len(losses)
+               + ' | '
+               + '{:<8.4f}' * len(metrics)
+               + '{:<6.2f}')
+
+    header = ' '*5 + text_form.format('', '', '', *losses.keys(), *metrics.keys(), 'Time')
+    train_form = 'TRAIN' + value_form
+    val_form = UNDERLINE_SEQ + 'VALID' + value_form + RESET_SEQ
+
+    return header, train_form, val_form 
+
 def get_train_format(framework: str = 'supervised'):
     assert framework in ['supervised', 'mean-teacher', 'dct', 'audioset-sup', 'audioset-fixmatch',
                          'compare2021-prs-sup']
