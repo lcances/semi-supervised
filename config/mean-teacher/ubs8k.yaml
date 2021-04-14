@@ -37,7 +37,7 @@ mt:
 
 # MixUp parameters
 mixup:
-  use: true
+  use: false
   alpha: 1.0
   max: true
   label: true
