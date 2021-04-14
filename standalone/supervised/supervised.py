@@ -12,7 +12,8 @@ from SSL.util import load_callbacks
 from SSL.util import load_dataset
 from SSL.util import load_model
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
-from SSL.util.utils import reset_seed, get_datetime, track_maximum, get_lr, get_train_format
+from SSL.util.utils import reset_seed, get_datetime, track_maximum, get_lr
+from SSL.util.utils import get_training_printers, DotDict
 from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage
 from torchsummary import summary
 import hydra
@@ -96,19 +97,22 @@ def run(cfg: DictConfig) -> DictConfig:
     checkpoint = CheckPoint(model, optimizer, mode="max", name=checkpoint_path)
 
     # -------- Metrics and print formater --------
-    fscore_fn = FScore()
-    acc_fn = CategoricalAccuracy()
+    metrics = DotDict({
+        'fscore': FScore(),
+        'acc': CategoricalAccuracy(),
+    })
     avg = ContinueAverage()
 
-    reset_metrics = lambda: [m.reset() for m in [fscore_fn, acc_fn, avg]]
+    reset_metrics = lambda: [m.reset() for m in [metrics.fscore, metrics.acc, avg]]
 
     maximum_tracker = track_maximum()
 
-    header, train_formater, val_formater = get_train_format('supervised')
+    header, train_formater, val_formater = get_training_printers({'ce': loss_ce}, metrics)
 
     # -------- Training and Validation function --------
     def train(epoch):
         start_time = time.time()
+        nb_batch = len(train_loader)
         print("")
 
         reset_metrics()
@@ -130,19 +134,17 @@ def run(cfg: DictConfig) -> DictConfig:
                 pred_arg = torch.argmax(logits, dim=1)
                 y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-                acc = acc_fn(pred_arg, y).mean(size=None)
-                fscore = fscore_fn(pred, y_one_hot).mean(size=None)
+                acc = metrics.acc(pred_arg, y).mean(size=None)
+                fscore = metrics.fscore(pred, y_one_hot).mean(size=None)
                 avg_ce = avg(loss.item()).mean(size=None)
 
                 # logs
                 print(train_formater.format(
-                    "Training: ",
-                    epoch + 1,
-                    int(100 * (i + 1) / len(train_loader)),
-                    "", avg_ce,
-                    "", acc, fscore,
+                    epoch + 1, i, nb_batch,
+                    avg_ce,
+                    acc, fscore,
                     time.time() - start_time
-                ), end="\r")
+                ), end='\r')
 
         tensorboard.add_scalar("train/Lce", avg_ce, epoch)
         tensorboard.add_scalar("train/f1", fscore, epoch)
@@ -150,7 +152,9 @@ def run(cfg: DictConfig) -> DictConfig:
 
     def val(epoch):
         start_time = time.time()
+        nb_batch = len(val_loader)
         print("")
+
         reset_metrics()
         model.eval()
 
@@ -167,19 +171,17 @@ def run(cfg: DictConfig) -> DictConfig:
                 pred_arg = torch.argmax(logits, dim=1)
                 y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-                acc = acc_fn(pred_arg, y).mean(size=None)
-                fscore = fscore_fn(pred, y_one_hot).mean(size=None)
+                acc = metrics.acc(pred_arg, y).mean(size=None)
+                fscore = metrics.fscore(pred, y_one_hot).mean(size=None)
                 avg_ce = avg(loss.item()).mean(size=None)
 
                 # logs
                 print(val_formater.format(
-                    "Validation: ",
-                    epoch + 1,
-                    int(100 * (i + 1) / len(val_loader)),
-                    "", avg_ce,
-                    "", acc, fscore,
+                    epoch + 1, i, nb_batch,
+                    avg_ce,
+                    acc, fscore,
                     time.time() - start_time
-                ), end="\r")
+                ), end='\r')
 
         tensorboard.add_scalar("val/Lce", avg_ce, epoch)
         tensorboard.add_scalar("val/f1", fscore, epoch)
