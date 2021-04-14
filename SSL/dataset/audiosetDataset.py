@@ -282,7 +282,7 @@ class SingleBalancedSampler:
 
         # Sort the class order
         random.shuffle(self.sorted_sample_indexes)
-        
+
     def __len__(self):
         return len(self.index_list)
 
@@ -679,6 +679,69 @@ def get_supervised(version: str = "unbalanced", **kwargs):
 
 
 
+def get_mean_teacher(version: str = "unbalanced", **kwargs):
+    def mean_teacher(
+            dataset_root: str,
+            rdcc_nbytes: int = 512 * 1024 ** 2,
+            data_shape: tuple = (64, 500, ),
+            data_key: str = "data",
+
+            train_transform: Module = None,
+            val_transform: Module = None,
+
+            batch_size: int = 64,
+            supervised_ratio: float = 1.0,
+            unsupervised_ratio: float = None,
+            balance: bool = True,
+
+            num_workers: int = 4,
+            pin_memory: bool = False,
+
+            **kwargs) -> Tuple[DataLoader, DataLoader]:
+
+        #Dataset parameters
+        d_params = dict(
+            root=os.path.join(dataset_root, "AudioSet/hdfs/mel_64x500"),
+            rdcc_nbytes=rdcc_nbytes,
+            data_shape=data_shape,
+            data_key=data_key,
+        )
+
+        # Dataloader parameters
+        l_params = dict(
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+
+        # validation subset
+        val_dataset = SingleAudioset(**d_params, version="eval", transform=val_transform)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, **l_params)
+
+        # Training subset
+        train_dataset = SingleAudioset(**d_params, version=version, transform=train_transform)
+
+        # Calc the size of the Supervised and Unsupervised
+        if unsupervised_ratio is None:
+            unsupervised_ratio = 1 - supervised_ratio
+
+        s_idx, u_idx = class_balance_split(train_dataset,
+                                                   supervised_ratio=supervised_ratio,
+                                                   unsupervised_ratio=unsupervised_ratio,
+                                                   batch_size=batch_size,
+                                                   verbose=True)
+
+        s_batch_sampler = SingleBalancedSampler(train_dataset, s_indexes, shuffle=True)
+        u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
+
+        s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=s_batch_sampler, **l_params)
+        u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
+
+        train_loader = ZipCycle([s_train_loader, u_train_loader])
+
+        return None, s_train_loader, val_loader
+    return mean_teacher
+
+
 def get_fixmatch(version: str = "unbalanced", **kwargs):
     def fixmatch(
             dataset_root: str,
@@ -725,7 +788,7 @@ def get_fixmatch(version: str = "unbalanced", **kwargs):
         weak_transform, strong_transform = train_transform
         train_weak_dataset = SingleAudioset(**d_params, version=version, transform=weak_transform)
         train_strong_dataset = SingleAudioset(**d_params, version=version, transform=strong_transform)
-        
+
         # Split the dataset into two S and U
         print('spliting the dataset')
         if unsupervised_ratio is None:
