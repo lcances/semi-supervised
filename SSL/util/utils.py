@@ -8,7 +8,7 @@ import itertools
 from collections import Iterable, Sized
 from zipfile import ZipFile, ZIP_DEFLATED
 import os
-from typing import Callable
+from typing import Callable, Tuple
 import pickle
 import bz2
 
@@ -56,7 +56,7 @@ class Cacher:
         return decorator
 
 
-def get_training_printers(losses: dict, metrics: dict):
+def get_training_printers(losses: dict, metrics: dict, filters: Tuple[str] = None):
     assert isinstance(losses, dict)
     assert isinstance(metrics, dict)
 
@@ -64,15 +64,15 @@ def get_training_printers(losses: dict, metrics: dict):
     RESET_SEQ = "\033[0m"
 
     text_form = (': epoch {:<6.6} ({:<6.6}/{:>6.6}) - '
-               + '{:<8.8}' * len(losses)
+               + '{:<8.8} ' * len(losses)
                + ' | '
-               + '{:<8.8}' * len(metrics)
+               + '{:<8.8} ' * len(metrics)
                + '{:<6.6}')  # time
 
     value_form = (': epoch {:<6d} ({:<6d}/{:>6d}) - '
-               + '{:<8.4f}' * len(losses)
+               + '{:<8.4f} ' * len(losses)
                + ' | '
-               + '{:<8.4f}' * len(metrics)
+               + '{:<8.4f} ' * len(metrics)
                + '{:<6.2f}')
 
     header = ' '*5 + text_form.format('', '', '', *losses.keys(), *metrics.keys(), 'Time')
@@ -278,13 +278,17 @@ class ZipCycle(Iterable, Sized):
         2 5
     """
 
-    def __init__(self, iterables: list):
+    def __init__(self, iterables: list, align: str = 'max'):
+        assert align in ['min', 'max']
+
         for iterable in iterables:
             if len(iterable) == 0:
                 raise RuntimeError("An iterable is empty.")
 
         self._iterables = iterables
-        self._len = max([len(iterable) for iterable in self._iterables])
+        
+        f = max if align == 'max' else min
+        self._len = f([len(iterable) for iterable in self._iterables])
 
     def __iter__(self) -> list:
         cur_iters = [iter(iterable) for iterable in self._iterables]
