@@ -13,9 +13,10 @@ from SSL.util.loaders import load_dataset, load_optimizer, load_callbacks, load_
 from SSL.util.model_loader import load_model
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
 from SSL.util.mixup import MixUpBatchShuffle
-from SSL.util.utils import reset_seed, get_datetime, DotDict, track_maximum, get_lr, get_train_format
+from SSL.util.utils import reset_seed, get_datetime, DotDict, track_maximum, get_lr
+from SSL.util.utils import get_training_printers, DotDict
 from SSL.ramps import Warmup, sigmoid_rampup
-from SSL.losses import JensenShanon
+from SSL.loss.losses import JensenShanon
 from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage
 
 
@@ -130,43 +131,39 @@ def run(cfg: DictConfig) -> DictConfig:
     checkpoint = CheckPoint([student, teacher], optimizer, mode="max", name=checkpoint_path)
 
     # -------- Metrics and print formater --------
-    def metrics_calculator():
-        def c(logits, y):
-            with torch.no_grad():
-                y_one_hot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
+    metrics = DotDict({
+        'sup': DotDict({
+            'acc_s': CategoricalAccuracy(),
+            'acc_t': CategoricalAccuracy(),
+            'fscore_s': FScore(),
+            'fscore_t': FScore(),
+        }),
 
-                pred = torch.softmax(logits, dim=1)
-                arg = torch.argmax(logits, dim=1)
+        'unsup': DotDict({
+            'acc_s': CategoricalAccuracy(),
+            'acc_t': CategoricalAccuracy(),
+            'fscore_s': FScore(),
+            'fscore_t': FScore(),
+        }),
 
-                acc = c.fn.acc(arg, y).mean(size=None)
-                f1 = c.fn.f1(pred, y_one_hot).mean(size=None)
+        'avg': DotDict({
+            'sce': ContinueAverage(),
+            'tce': ContinueAverage(),
+            'ccost': ContinueAverage(),
+        })
+    })
 
-                return acc, f1,
+    def reset_metrics(metrics: dict):
+        for k, v in metrics.items():
+            if isinstance(v, dict):
+                reset_metrics(v)
 
-        c.fn = DotDict(
-            acc=CategoricalAccuracy(),
-            f1=FScore(),
-        )
-
-        return c
-
-    calc_student_s_metrics = metrics_calculator()
-    calc_student_u_metrics = metrics_calculator()
-    calc_teacher_s_metrics = metrics_calculator()
-    calc_teacher_u_metrics = metrics_calculator()
-
-    avg_Sce = ContinueAverage()
-    avg_Tce = ContinueAverage()
-    avg_ccost = ContinueAverage()
-
-    def reset_metrics():
-        for d in [calc_student_s_metrics.fn, calc_student_u_metrics.fn, calc_teacher_s_metrics.fn, calc_teacher_u_metrics.fn]:
-            for fn in d.values():
-                fn.reset()
+            else:
+                v.reset()
 
     maximum_tracker = track_maximum()
 
-    header, train_formater, val_formater = get_train_format('mean-teacher')
+    header, train_formater, val_formater = get_training_printers(metrics.avg, metrics.sup)
 
     # -------- Training and Validation function --------
     # use softmax or not
@@ -192,7 +189,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
         nb_batch = len(train_loader)
 
-        reset_metrics()
+        reset_metrics(metrics)
         student.train()
 
         for i, (S, U) in enumerate(train_loader):
@@ -237,46 +234,52 @@ def run(cfg: DictConfig) -> DictConfig:
                 update_teacher_model(student, teacher, cfg.mt.alpha, epoch * nb_batch + i)
 
                 # Compute the metrics for the student
-                student_s_metrics = calc_student_s_metrics(student_s_logits, y_s)
-                student_u_metrics = calc_student_u_metrics(student_u_logits, y_u)
-                student_s_acc, student_s_f1, student_u_acc, student_u_f1 = *student_s_metrics, *student_u_metrics
+                y_s_onehot = F.one_hot(y_s, num_classes=cfg.dataset.num_classes)
+                y_u_onehot = F.one_hot(y_u, num_classes=cfg.dataset.num_classes)
+
+                acc_ss = metrics.sup.acc_s(torch.argmax(student_s_logits, dim=1), y_s).mean(size=None)
+                acc_su = metrics.unsup.acc_s(torch.argmax(student_u_logits, dim=1), y_u).mean(size=None)
+                fscore_ss = metrics.sup.fscore_s(torch.softmax(student_s_logits, dim=1), y_s_onehot).mean(size=None)
+                fscore_su = metrics.unsup.fscore_s(torch.softmax(student_u_logits, dim=1), y_u_onehot).mean(size=None)
 
                 # Compute the metrics for the teacher
-                teacher_s_metrics = calc_teacher_s_metrics(teacher_s_logits, y_s)
-                teacher_u_metrics = calc_teacher_u_metrics(teacher_u_logits, y_u)
-                teacher_s_acc, teacher_s_f1, teacher_u_acc, teacher_u_f1 = *teacher_s_metrics, *teacher_u_metrics
+                acc_ts = metrics.sup.acc_t(torch.argmax(teacher_s_logits, dim=1), y_s).mean(size=None)
+                acc_tu = metrics.unsup.acc_t(torch.argmax(teacher_u_logits, dim=1), y_u).mean(size=None)
+                fscore_ts = metrics.sup.fscore_t(torch.softmax(teacher_s_logits, dim=1), y_s_onehot).mean(size=None)
+                fscore_tu = metrics.unsup.fscore_t(torch.softmax(teacher_u_logits, dim=1), y_u_onehot).mean(size=None)
 
                 # Running average of the two losses
-                student_running_loss = avg_Sce(loss.item()).mean(size=None)
-                teacher_running_loss = avg_Tce(_teacher_loss.item()).mean(size=None)
-                running_ccost = avg_ccost(ccost.item()).mean(size=None)
+                sce_avg = metrics.avg.sce(loss.item()).mean(size=None)
+                tce_avg = metrics.avg.tce(_teacher_loss.item()).mean(size=None)
+                ccost_avg = metrics.avg.ccost(ccost.item()).mean(size=None)
 
                 # logs
                 print(train_formater.format(
-                    "Training: ", epoch + 1, int(100 * (i + 1) / nb_batch),
-                    "", student_running_loss, running_ccost, *student_s_metrics, *student_u_metrics,
-                    "", teacher_running_loss, *teacher_s_metrics, *teacher_u_metrics,
+                    epoch + 1, i, nb_batch,
+                    sce_avg, tce_avg, ccost_avg,
+                    acc_ss, acc_ts, fscore_ss, fscore_ts,
                     time.time() - start_time),
                     end="\r")
 
-        tensorboard.add_scalar("train/student_acc_s", student_s_acc, epoch)
-        tensorboard.add_scalar("train/student_acc_u", student_u_acc, epoch)
-        tensorboard.add_scalar("train/student_f1_s", student_s_f1, epoch)
-        tensorboard.add_scalar("train/student_f1_u", student_u_f1, epoch)
+        tensorboard.add_scalar("train/student_acc_s", acc_ss, epoch)
+        tensorboard.add_scalar("train/student_acc_u", acc_su, epoch)
+        tensorboard.add_scalar("train/student_f1_s", fscore_ss, epoch)
+        tensorboard.add_scalar("train/student_f1_u", fscore_su, epoch)
 
-        tensorboard.add_scalar("train/teacher_acc_s", teacher_s_acc, epoch)
-        tensorboard.add_scalar("train/teacher_acc_u", teacher_u_acc, epoch)
-        tensorboard.add_scalar("train/teacher_f1_s", teacher_s_f1, epoch)
-        tensorboard.add_scalar("train/teacher_f1_u", teacher_u_f1, epoch)
+        tensorboard.add_scalar("train/teacher_acc_s", acc_ts, epoch)
+        tensorboard.add_scalar("train/teacher_acc_u", acc_tu, epoch)
+        tensorboard.add_scalar("train/teacher_f1_s", fscore_ts, epoch)
+        tensorboard.add_scalar("train/teacher_f1_u", fscore_tu, epoch)
 
-        tensorboard.add_scalar("train/student_loss", student_running_loss, epoch)
-        tensorboard.add_scalar("train/teacher_loss", teacher_running_loss, epoch)
-        tensorboard.add_scalar("train/consistency_cost", running_ccost, epoch)
+        tensorboard.add_scalar("train/student_loss", sce_avg, epoch)
+        tensorboard.add_scalar("train/teacher_loss", tce_avg, epoch)
+        tensorboard.add_scalar("train/consistency_cost", ccost_avg, epoch)
 
     def val(epoch):
         start_time = time.time()
         print("")
-        reset_metrics()
+        nb_batch = len(val_loader)
+        reset_metrics(metrics)
         student.eval()
 
         with torch.set_grad_enabled(False):
@@ -294,44 +297,43 @@ def run(cfg: DictConfig) -> DictConfig:
                 ccost = consistency_cost(softmax_fn(student_logits), softmax_fn(teacher_logits))
 
                 # Compute the metrics
-                # ---- student
-                student_metrics = calc_student_s_metrics(student_logits, y)
-                student_acc, student_f1 = student_metrics
+                y_onehot = F.one_hot(y, num_classes=cfg.dataset.num_classes)
 
-                # ---- teacher
-                teacher_metrics = calc_teacher_s_metrics(teacher_logits, y)
-                teacher_acc, teacher_f1 = teacher_metrics
+                acc_s = metrics.sup.acc_s(torch.argmax(student_logits, dim=1), y).mean(size=None)
+                acc_t = metrics.sup.acc_t(torch.argmax(teacher_logits, dim=1), y).mean(size=None)
+                fscore_s = metrics.sup.fscore_s(torch.softmax(student_logits, dim=1), y_onehot).mean(size=None)
+                fscore_t = metrics.sup.fscore_t(torch.softmax(teacher_logits, dim=1), y_onehot).mean(size=None)
 
                 # Running average of the two losses
-                student_running_loss = avg_Sce(loss.item()).mean(size=None)
-                teacher_running_loss = avg_Tce(_teacher_loss.item()).mean(size=None)
-                running_ccost = avg_ccost(ccost.item()).mean(size=None)
+                sce_avg = metrics.avg.sce(loss.item()).mean(size=None)
+                tce_avg = metrics.avg.tce(_teacher_loss.item()).mean(size=None)
+                ccost_avg = metrics.avg.ccost(ccost.item()).mean(size=None)
 
                 # logs
                 print(val_formater.format(
-                    "Validation: ", epoch + 1, int(100 * (i + 1) / len(val_loader)),
-                    "", student_running_loss, running_ccost, *student_metrics, 0.0, 0.0,
-                    "", teacher_running_loss, *teacher_metrics, 0.0, 0.0,
-                    time.time() - start_time
+                    epoch + 1, i, nb_batch,
+                    sce_avg, tce_avg, ccost_avg,
+                    acc_s, acc_t, fscore_s, fscore_t,
+                    time.time() - start_time,
                 ), end="\r")
 
-        tensorboard.add_scalar("val/student_acc", student_acc, epoch)
-        tensorboard.add_scalar("val/student_f1", student_f1, epoch)
-        tensorboard.add_scalar("val/teacher_acc", teacher_acc, epoch)
-        tensorboard.add_scalar("val/teacher_f1", teacher_f1, epoch)
-        tensorboard.add_scalar("val/student_loss", student_running_loss, epoch)
-        tensorboard.add_scalar("val/teacher_loss", teacher_running_loss, epoch)
-        tensorboard.add_scalar("val/consistency_cost", running_ccost, epoch)
+        tensorboard.add_scalar("val/student_acc", acc_s, epoch)
+        tensorboard.add_scalar("val/student_f1", fscore_s, epoch)
+        tensorboard.add_scalar("val/teacher_acc", acc_t, epoch)
+        tensorboard.add_scalar("val/teacher_f1", fscore_t, epoch)
+        tensorboard.add_scalar("val/student_loss", sce_avg, epoch)
+        tensorboard.add_scalar("val/teacher_loss", tce_avg, epoch)
+        tensorboard.add_scalar("val/consistency_cost", ccost_avg, epoch)
 
         tensorboard.add_scalar("hyperparameters/learning_rate", get_lr(optimizer), epoch)
         tensorboard.add_scalar("hyperparameters/lambda_cost_max", lambda_cost(), epoch)
 
-        tensorboard.add_scalar("max/student_acc", maximum_tracker("student_acc", student_acc), epoch)
-        tensorboard.add_scalar("max/teacher_acc", maximum_tracker("teacher_acc", teacher_acc), epoch)
-        tensorboard.add_scalar("max/student_f1", maximum_tracker("student_f1", student_f1), epoch)
-        tensorboard.add_scalar("max/teacher_f1", maximum_tracker("teacher_f1", teacher_f1), epoch)
+        tensorboard.add_scalar("max/student_acc", maximum_tracker("student_acc", acc_s), epoch)
+        tensorboard.add_scalar("max/teacher_acc", maximum_tracker("teacher_acc", acc_t), epoch)
+        tensorboard.add_scalar("max/student_f1", maximum_tracker("student_f1", fscore_s), epoch)
+        tensorboard.add_scalar("max/teacher_f1", maximum_tracker("teacher_f1", fscore_t), epoch)
 
-        checkpoint.step(teacher_acc)
+        checkpoint.step(acc_t)
         for c in callbacks:
             c.step()
 
@@ -356,7 +358,7 @@ def run(cfg: DictConfig) -> DictConfig:
         'model': cfg.model.model,
         'supervised_ratio': cfg.train_param.supervised_ratio,
         'batch_size': cfg.train_param.batch_size,
-        'nb_iteration': cfg.train_param.nb_iteration,
+        'nb_epoch': cfg.train_param.nb_epoch,
         'learning_rate': cfg.train_param.learning_rate,
         'seed': cfg.train_param.seed,
 
