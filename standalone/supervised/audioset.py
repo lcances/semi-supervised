@@ -13,7 +13,7 @@ from SSL.util.checkpoint import CheckPoint, mSummaryWriter
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, DotDict, get_train_format, get_lr
 from SSL.util.mixup import MixUpBatchShuffle
 from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage, MAP
-from augmentation_utils.spec_augmentations import SpecAugmentation
+from augmentation_utils.spec_augmentations import SpecAugment
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
@@ -122,9 +122,9 @@ def run(cfg: DictConfig) -> DictConfig:
 
     # -------- Augmentations ---------
     spec_augmenter = SpecAugmentation(time_drop_width=cfg.specaugment.time_drop_width,
-                                      time_stripes_num=cfg.specaugment.sa_time_stripe_num,
+                                      time_stripes_num=cfg.specaugment.time_stripe_num,
                                       freq_drop_width=cfg.specaugment.freq_drop_width,
-                                      freq_stripes_num=cfg.specaugment.req_stripe_num)
+                                      freq_stripes_num=cfg.specaugment.freq_stripe_num)
 
     mixup_fn = MixUpBatchShuffle(alpha=cfg.mixup.alpha, apply_max=cfg.mixup.max, mix_labels=cfg.mixup.label)
 
