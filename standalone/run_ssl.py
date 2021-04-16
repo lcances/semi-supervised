@@ -105,6 +105,7 @@ def train(args):
     # Automatically load the configuration file
     config_path = get_config_path(args.method, args.dataset)
     script_path = get_script_path(args.method, args.dataset)
+    python_path = args.python_bin if args.python_bin != '' else 'python'
 
     print('Default training parameters at: ', config_path)
     print('Executing: ', script_path)
@@ -115,7 +116,7 @@ def train(args):
     override_hydra_params += ['path.logs_root=../']
 #     override_hydra_params += ['path.tensorboard_root=../tensorboard']
 
-    subprocess_params = ['python', script_path] + ['-cn', config_path] + override_hydra_params
+    subprocess_params = [python_path, script_path] + ['-cn', config_path] + override_hydra_params
     subprocess.call(subprocess_params)
 
 
@@ -124,6 +125,7 @@ def cross_validation(args):
     # Automatically load the configuration file
     config_path = os.path.join('./..', 'config', args.method, args.dataset + '.yaml')
     script_path = get_script_path(args.method, args.dataset)
+    python_path = args.python_bin if args.python_bin != '' else 'python'
 
     print('Default training parameters at: ', config_path)
     print('Executing: ', script_path)
@@ -145,7 +147,7 @@ def cross_validation(args):
         override_hydra_params += [f'train_param.val_folds={vf}']
         override_hydra_params += [f'path.sufix=run-{i}']
 
-        subprocess_params = ['python', script_path] + override_hydra_params
+        subprocess_params = [python_path, script_path] + override_hydra_params
         subprocess.call(subprocess_params)
 
 
@@ -154,11 +156,13 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(dest='mode')
 
     parser_train = subparsers.add_parser('train')
+    parser_train.add_argument('--python_bin', type=str, default='')
     parser_train.add_argument('--method', type=str, choices=available_methods, default='supervised')
     parser_train.add_argument('--dataset', type=str, default='ubs8k')
     parser_train.add_argument('kwargs', nargs='*')
 
     parser_cv = subparsers.add_parser('cross-validation')
+    parser_cv.add_argument('--python_bin', type=str, default='')
     parser_cv.add_argument('--method', type=str, choices=available_methods, default='supervised')
     parser_cv.add_argument('--dataset', choices=['ubs8k', 'esc10'], default='ubs8k')
     parser_cv.add_argument('kwargs', nargs='*')
