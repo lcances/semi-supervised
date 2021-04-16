@@ -1,17 +1,7 @@
 #!/bin/bash
 # ___________________________________________________________________________________ #
-die() {
-    printf '%s\n' "$1" >& 2
-    exit 1
-}
-
-parse_long() {
-    if [ "$1" ]; then
-        echo $1
-    else
-        die "missing argument value"
-    fi
-}
+source bash_scripts/parse_option.sh
+source bash_scripts/cross_validation.sh
 
 function show_help {
     echo "usage:  $BASH_SOURCE dataset model [-r | --ratio] [-n | --node] [-N | --nb_task] \
