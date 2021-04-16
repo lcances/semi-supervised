@@ -730,15 +730,15 @@ def get_mean_teacher(version: str = "unbalanced", **kwargs):
                                                    batch_size=batch_size,
                                                    verbose=True)
 
-        s_batch_sampler = SingleBalancedSampler(train_dataset, s_indexes, shuffle=True)
-        u_batch_sampler = SingleBalancedSampler(train_dataset, u_indexes, shuffle=True)
+        s_batch_sampler = SingleBalancedSampler(train_dataset, s_idx, shuffle=True)
+        u_batch_sampler = SingleBalancedSampler(train_dataset, u_idx, shuffle=True)
 
         s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=s_batch_sampler, **l_params)
         u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
 
         train_loader = ZipCycle([s_train_loader, u_train_loader])
 
-        return None, s_train_loader, val_loader
+        return None, train_loader, val_loader
     return mean_teacher
 
 

@@ -21,8 +21,8 @@ def dct_uniloss(model1, model2, learning_rate: float = 0.001, **kwargs) -> Optim
     raise NotImplementedError
 
 
-def mean_teacher(student, learning_rate: float = 0.003, **kwargs) -> Optimizer:
-    raise NotImplementedError
+def mean_teacher(student, **kwargs) -> Optimizer:
+    return supervised(student, **kwargs)
 
 
 def fixmatch(model, **kwargs):

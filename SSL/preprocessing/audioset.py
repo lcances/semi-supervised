@@ -8,8 +8,8 @@ from mlu.transforms.waveform import StretchPadCrop
 from mlu.transforms.spectrogram import CutOutSpec
 
 def supervised():
+    # We use the pre-compute log-mel-spectrogram
     return None, None
-
 
 def dct():
     return None, None
@@ -24,7 +24,7 @@ def dct_aug4adv():
 
 
 def mean_teacher():
-    return None, None
+    return supervised()
 
 
 def fixmatch():

@@ -13,11 +13,11 @@ dataset:
   num_classes: 527
 
 model:
-  model: wideresnet28_2
+  model: MobileNetV2
 
 train_param:
   supervised_ratio: 0.1
-  batch_size: 128
+  batch_size: 64
   nb_iteration: 125000
   learning_rate: 0.001
   seed: 1234
@@ -31,9 +31,9 @@ train_param:
 # Mean teacher parameters
 mt:
   alpha: 0.999
-  warmup_length: 50
+  warmup_length: 31250  # 125 000 iteration / 4
   lambda_ccost_max: 1
-  use_sigmoid: true
+  activation: sigmoid
   ccost_method: mse
 
 # MixUp parameters
@@ -53,7 +53,7 @@ specaugment:
 path:
   dataset_root: ../../datasets
   logs_root: ../..
-  checkpoint_path: ${path.logs_root}/model_save/${dataset.dataset}/supervised
-  tensorboard_path: ${path.logs_root}/tensorboard/${dataset.dataset}/supervised
+  checkpoint_path: ${path.logs_root}/model_save/${dataset.dataset}/mean-teacher
+  tensorboard_path: ${path.logs_root}/tensorboard/${dataset.dataset}/mean-teacher
   sufix: ''
   weight: ''
