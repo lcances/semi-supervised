@@ -1,0 +1,57 @@
+hydra:
+  hydra_logging:
+    disable_existing_loggers: false
+  run:
+    dir: .
+
+hardware:
+  nb_cpu: 4
+  nb_gpu: 1
+
+dataset:
+  dataset: audioset-unbalanced
+  num_classes: 527
+
+model:
+  model: MobileNetV2
+train_param:
+  supervised_ratio: 0.1
+  batch_size: 64
+  nb_epoch: 125000
+  learning_rate: 0.0005
+  seed: 1234
+  resume: false
+  augmentation: null
+
+  # These two parameters bellow are used for UrbanSound8k and ESC cross validation
+  train_folds: null
+  val_folds: null
+
+# Mean teacher parameters
+dct:
+  epsilon: 0.02
+  warmup_length: 75000
+  lambda_cot_max: 1
+  lambda_diff_max: 0.5
+
+# MixUp parameters
+mixup:
+  use: true
+  alpha: 1.0
+  max: true
+  label: true
+
+specaugment:
+  use: true
+  time_drop_width: 32
+  time_stripe_num: 1
+  freq_drop_width: 4
+  freq_stripe_num: 1
+
+path:
+  dataset_root: ../../datasets
+  logs_root: ../..
+  checkpoint_path: ${path.logs_root}/model_save/${dataset.dataset}/mean-teacher
+  tensorboard_path: ${path.logs_root}/tensorboard/${dataset.dataset}/mean-teacher
+  sufix: ''
+  weight: ''
