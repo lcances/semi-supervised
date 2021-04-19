@@ -10,7 +10,7 @@ from torch.nn import Module
 from torch.utils.data import Dataset, DataLoader, Sampler, SubsetRandomSampler
 import functools
 import itertools
-from SSL.util.utils import cache_to_disk, ZipCycle
+from SSL.util.utils import cache_to_disk, ZipCycle, ZipCycleInfinite
 
 
 class Audioset(Dataset):
@@ -729,14 +729,17 @@ def get_mean_teacher(version: str = "unbalanced", **kwargs):
                                                    unsupervised_ratio=unsupervised_ratio,
                                                    batch_size=batch_size,
                                                    verbose=True)
+        
+        s_batch_size = int(numpy.floor(batch_size * supervised_ratio))
+        u_batch_size = int(numpy.ceil(batch_size * (1 - supervised_ratio)))
 
-        s_batch_sampler = SingleBalancedSampler(train_dataset, s_idx, shuffle=True)
-        u_batch_sampler = SingleBalancedSampler(train_dataset, u_idx, shuffle=True)
+        s_sampler = SingleBalancedSampler(train_dataset, s_idx, shuffle=True)
+        u_sampler = SingleBalancedSampler(train_dataset, u_idx, shuffle=True)
 
-        s_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=s_batch_sampler, **l_params)
-        u_train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=u_batch_sampler, **l_params)
+        s_train_loader = DataLoader(train_dataset, batch_size=s_batch_size, sampler=s_sampler, **l_params)
+        u_train_loader = DataLoader(train_dataset, batch_size=u_batch_size, sampler=u_sampler, **l_params)
 
-        train_loader = ZipCycle([s_train_loader, u_train_loader])
+        train_loader = ZipCycleInfinite([s_train_loader, u_train_loader])
 
         return None, train_loader, val_loader
     return mean_teacher
