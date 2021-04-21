@@ -17,7 +17,7 @@ model:
 train_param:
   supervised_ratio: 0.1
   batch_size: 64
-  nb_epoch: 125000
+  nb_iteration: 125000
   learning_rate: 0.0005
   seed: 1234
   resume: false
@@ -30,19 +30,19 @@ train_param:
 # Mean teacher parameters
 dct:
   epsilon: 0.02
-  warmup_length: 75000
+  warmup_length: 25000
   lambda_cot_max: 1
-  lambda_diff_max: 0.5
+  lambda_diff_max: 2
 
 # MixUp parameters
 mixup:
-  use: true
+  use: false
   alpha: 1.0
   max: true
   label: true
 
 specaugment:
-  use: true
+  use: false
   time_drop_width: 32
   time_stripe_num: 1
   freq_drop_width: 4
@@ -51,7 +51,7 @@ specaugment:
 path:
   dataset_root: ../../datasets
   logs_root: ../..
-  checkpoint_path: ${path.logs_root}/model_save/${dataset.dataset}/mean-teacher
-  tensorboard_path: ${path.logs_root}/tensorboard/${dataset.dataset}/mean-teacher
+  checkpoint_path: ${path.logs_root}/model_save/${dataset.dataset}/deep-co-training
+  tensorboard_path: ${path.logs_root}/tensorboard/${dataset.dataset}/deep-co-training
   sufix: ''
   weight: ''

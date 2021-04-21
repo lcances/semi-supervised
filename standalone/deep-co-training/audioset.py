@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.nn.parallel import DataParallel
 # from torch.utils.tensorboard import SummaryWriter
 from advertorch.attacks import GradientSignAttack
-from metric_utils.metrics import CategoricalAccuracy, FScore, ContinueAverage, Ratio
+from metric_utils.metrics import BinaryAccuracy, FScore, ContinueAverage, MAP
 from SSL.util.checkpoint import CheckPoint, mSummaryWriter
 from SSL.util.utils import reset_seed, get_datetime, track_maximum, get_lr, get_training_printers, DotDict
 from SSL.util.model_loader import load_model
@@ -95,7 +95,7 @@ def run(cfg: DictConfig) -> DictConfig:
     sufix_title += f'_{cfg.dct.epsilon}eps'
     sufix_title += f'-{cfg.dct.warmup_length}wl'
     sufix_title += f'-{cfg.dct.lambda_cot_max}lcm'
-    sufix_title += f'-{cfg.dct.lambda_diff_m
+    sufix_title += f'-{cfg.dct.lambda_diff_max}ldm'
     
     # mixup parameters
     sufix_mixup = '' 
@@ -112,7 +112,7 @@ def run(cfg: DictConfig) -> DictConfig:
         sufix_sa += f'-{cfg.specaugment.time_drop_width}-tdw'
         sufix_sa += f'-{cfg.specaugment.time_stripe_num}-tsn'
         sufix_sa += f'-{cfg.specaugment.freq_drop_width}-fdw'
-        sufix_sa += f'-{cfg.specaugment.freq_stripe_num}-fsn'ax}ldm'
+        sufix_sa += f'-{cfg.specaugment.freq_stripe_num}-fsn'
 
     # -------- Tensorboard logging --------
     tensorboard_sufix = sufix_title + f'_{cfg.train_param.nb_iteration}-e' + sufix_mixup + sufix_sa + f'__{cfg.path.sufix}'
@@ -124,12 +124,12 @@ def run(cfg: DictConfig) -> DictConfig:
 
     # -------- Optimizer, callbacks, loss, adversarial generator and checkpoint --------
     optimizer = load_optimizer(cfg.dataset.dataset, "dct", model1=m1, model2=m2, learning_rate=cfg.train_param.learning_rate)
-    callbacks = load_callbacks(cfg.dataset.dataset, "dct", optimizer=optimizer, nb_epoch=cfg.train_param.nb_epoch)
+    callbacks = load_callbacks(cfg.dataset.dataset, "dct", optimizer=optimizer, nb_epoch=cfg.train_param.nb_iteration)
     
     losses = DotDict({
-        'sup': DCTSupWithLogitsLoss(reduction='mean', sub_loss=ValidLoss.BINARY_CROSS_ENTROPY)
-        'cot': DCTCotWithLogitsLoss(reduction='mean', activation=Activation.SIGMOID)
-        'diff': DCTDiffWithLogitsLoss(reduction='mean', activation=Activation.SIGMOID)
+        'sup': DCTSupWithLogitsLoss(reduction='mean', sub_loss=ValidLoss.BINARY_CROSS_ENTROPY),
+        'cot': DCTCotWithLogitsLoss(activation=Activation.SIGMOID),
+        'diff': DCTDiffWithLogitsLoss(activation=Activation.SIGMOID),
     })
 
     # Checkpoint
@@ -155,7 +155,7 @@ def run(cfg: DictConfig) -> DictConfig:
     )
 
     # -------- Metrics and print formater --------
-    metrics_fn = DotDict({
+    metrics = DotDict({
         'sup': DotDict({
             'fscore_1': FScore(),
             'fscore_2': FScore(),
@@ -212,7 +212,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
         # Apply mixup if needed, otherwise no mixup.
         if cfg.mixup.use:
-            x_u, y_u = mixup_u_fn(x_u, y_u)
+            x_u, y_u = mixup_fn(x_u, y_u)
 
         # Apply spec augmentation if needed
         if cfg.specaugment.use:
@@ -313,26 +313,26 @@ def run(cfg: DictConfig) -> DictConfig:
         nb_batch = len(val_loader)
         print("")
 
-        reset_metrics()
+        reset_metrics(metrics)
         m1.eval()
         m2.eval()
 
         with torch.set_grad_enabled(False):
-            for batch, (X, y) in enumerate(val_loader):
-                x = X.cuda()
-                y = y.cuda()
+            for i, (X, y) in enumerate(val_loader):
+                x = X.cuda().float()
+                y = y.cuda().float()
 
                 logits_1 = m1(x)
                 logits_2 = m2(x)
 
                 # losses ----
-                l_sup = loss_sup(logits_1, logits_2, y, y)
+                l_sup = losses.sup((logits_1, y), (logits_2, y))
 
                 # ======== Calc the metrics ========
                 fscore_1 = m_(metrics.sup.fscore_1(S(logits_1), y))
                 fscore_2 = m_(metrics.sup.fscore_2(S(logits_2), y))
-                mAP_1 = m_(metrics.sup.map_1(S(student_logits).cpu().reshape(-1), y.cpu().reshape(-1)))
-                mAP_2 = m_(metrics.sup.map_2(S(teacher_logits).cpu().reshape(-1), y.cpu().reshape(-1)))
+                mAP_1 = m_(metrics.sup.map_1(S(logits_1).cpu().reshape(-1), y.cpu().reshape(-1)))
+                mAP_2 = m_(metrics.sup.map_2(S(logits_2).cpu().reshape(-1), y.cpu().reshape(-1)))
                 avg_sup = m_(metrics.avg.sup(l_sup.item()))
 
                 # logs
@@ -373,12 +373,12 @@ def run(cfg: DictConfig) -> DictConfig:
     train_iterator = iter(train_loader)
     start_time = time.time()
 
-    for e in range(start_epoch, end_epoch):
+    for i in range(start_iteration, end_iteration):
         # Validation every 500 iteration
         if i % 500 == 0:
             mAP_1, mAP_2 = val(i)
             print('')
-            checkpoint.step(torch.mean(mAP_1 + mAP_2))
+            checkpoint.step((mAP_1 + mAP_2)/2.0, iter=i)
             tensorboard.flush()
 
         # Perform train

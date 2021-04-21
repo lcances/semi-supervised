@@ -1,10 +1,9 @@
 from enum import Enum
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.nn.modules.loss import _WeightedLoss
 
 class Activation(Enum):
     SIGMOID=0
@@ -16,29 +15,30 @@ class ValidLoss(Enum):
     BINARY_CROSS_ENTROPY=1
 
 
-class DCTSupWithLogitsLoss(_WeightedLoss):
-    def __init__(weight: Optional[Tensor] = None,size_average=None, reduce=None, reduction: str = 'mean',
-                 sub_loss: ValidLoss = ValidLoss.CROSS_ENTROPY):
-        super().__init__(weight, size_average, reduce, reduction)
+class DCTSupWithLogitsLoss(nn.Module):
+    def __init__(self, reduction: str = 'mean', sub_loss: ValidLoss = ValidLoss.BINARY_CROSS_ENTROPY):
+        super().__init__()
 
         if sub_loss == ValidLoss.CROSS_ENTROPY:
-            self.sub_loss = nn.CrossEntropyLoss(weight, size_average, reduce, reduction)
+            self.sub_loss = nn.CrossEntropyLoss(reduction=reduction)
         
-        else sub_loss == ValidLoss.BINARY_CROSS_ENTROPY:
-            self.sub_loss = nn.BCEWithLogitsLoss(size_average, reduce, reduction)
+        else:
+            self.sub_loss = nn.BCEWithLogitsLoss(reduction=reduction)
+            
+        print(self.sub_loss)
 
     def forward(self, input1: Tuple, input2: Tuple) -> Tensor:
         logits_1, y_1 = input1
         logits_2, y_2 = input2
+        
         loss1 = self.sub_loss(logits_1, y_1)
         loss2 = self.sub_loss(logits_2, y_2)
         return (loss1 + loss2)
 
 
-class DCTCotWithLogitsLoss(_WeightedLoss):
-    def __init__(weight: Optional[Tensor] = None,size_average=None, reduce=None, reduction: str = 'mean',
-                 activation: Activation = Activation.SOFTMAX):
-        super().__init__(weight, size_average, reduce, reduction)
+class DCTCotWithLogitsLoss(nn.Module):
+    def __init__(self, activation: Activation = Activation.SOFTMAX):
+        super().__init__()
 
         if activation == Activation.SOFTMAX:
             self.S = nn.Softmax(dim=1)
@@ -66,10 +66,9 @@ class DCTCotWithLogitsLoss(_WeightedLoss):
         return (loss1 - 0.5 * (loss2 + loss3)) / U_batch_size
 
 
-class DCTDiffWithLogitsLoss(_WeightedLoss):
-    def __init__(weight: Optional[Tensor] = None,size_average=None, reduce=None, reduction: str = 'mean',
-                 activation: Activation = Activation.SOFTMAX):
-        super().__init__(weight, size_average, reduce, reduction)
+class DCTDiffWithLogitsLoss(nn.Module):
+    def __init__(self, activation: Activation = Activation.SOFTMAX):
+        super().__init__()
 
         if activation == Activation.SOFTMAX:
             self.S = nn.Softmax(dim=1)
@@ -85,8 +84,8 @@ class DCTDiffWithLogitsLoss(_WeightedLoss):
         logits_u1, adv_logits_u1 = input_u1
         logits_u2, adv_logits_u2 = input_u2
 
-        s_batch_size = logit_s1.size()[0]
-        u_batch_size = logit_u1.size()[0]
+        s_batch_size = logits_s1.size()[0]
+        u_batch_size = logits_u1.size()[0]
         total_batch_size = s_batch_size + u_batch_size
 
         a = self.S(logits_s2) * self.LS(adv_logits_s1)

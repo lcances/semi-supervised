@@ -12,7 +12,7 @@ def supervised():
     return None, None
 
 def dct():
-    return None, None
+    return supervised()
 
 
 def dct_uniloss():

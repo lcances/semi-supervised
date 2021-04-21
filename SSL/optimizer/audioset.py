@@ -14,7 +14,9 @@ def supervised(model,
 
 
 def dct(model1, model2, learning_rate: float = 0.001, **kwargs) -> Optimizer:
-    raise NotImplementedError
+    parameters = list(model1.parameters()) + list(model2.parameters())
+    return Adam(parameters, lr=learning_rate)
+    
 
 
 def dct_uniloss(model1, model2, learning_rate: float = 0.001, **kwargs) -> Optimizer:
