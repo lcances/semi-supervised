@@ -138,7 +138,7 @@ def run(cfg: DictConfig) -> DictConfig:
     checkpoint_sufix = sufix_title + sufix_mixup + sufix_sa + f'__{cfg.path.sufix}'
     checkpoint_title = f'{cfg.model.model}_{checkpoint_sufix}'
     checkpoint_path = f'{cfg.path.checkpoint_path}/{cfg.model.model}/{checkpoint_title}'
-    checkpoint = CheckPoint([student, teacher], optimizer, mode="max", name=checkpoint_path)
+    checkpoint = CheckPoint([student, teacher], optimizer, mode="max", name=checkpoint_path, nb_gpu=cfg.hardware.nb_gpu)
 
     # -------- Metrics and print formater --------
     metrics = DotDict({
@@ -374,7 +374,7 @@ def run(cfg: DictConfig) -> DictConfig:
         if i % 500 == 0:
             mAP_t = val(i)
             print('')
-            checkpoint.step(mAP_t)
+            checkpoint.step(mAP_t, iter=i)
             tensorboard.flush()
 
         # Perform train
