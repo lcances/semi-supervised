@@ -7,10 +7,11 @@ import os
 class CheckPoint:
     def __init__(self, model: list, optimizer,
                  mode: str = "max", name: str = "best",
-                 verbose: bool = True):
+                 nb_gpu: int = 1, verbose: bool = True):
         self.mode = mode
 
         self.name = name
+        self.nb_gpu = nb_gpu
         self.verbose = verbose
 
         self.model = model
@@ -114,6 +115,12 @@ class CheckPoint:
         if not isinstance(destination["state_dict"], list):
             destination["state_dict"] = [destination["state_dict"]]
 
+        # The name of the module change when DataParallel is used
+        if self.nb_gpu > 1:
+            for i in range(len(self.model)):
+                state["state_dict"][i] = self._clean_state_dict(state["state_dict"][i])
+
+        # Load the model(s)
         for i in range(len(self.model)):
             self.model[i].load_state_dict(destination["state_dict"][i])
 
