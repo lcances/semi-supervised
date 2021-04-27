@@ -10,15 +10,8 @@ def get_lr_lambda(nb_epoch):
 
 
 def supervised(nb_epoch: int, optimizer: Optimizer, **kwargs) -> list:
-#     loader = kwargs.get("loader", None)
-    
-#     nb_step = nb_epoch
-#     if loader is not None:
-#         nb_step = len(loader) * nb_epoch
-        
-#     lr_scheduler = LambdaLR(optimizer, get_lr_lambda(nb_step))
-#     return [lr_scheduler]
-    return []
+    lr_scheduler = LambdaLR(optimizer, get_lr_lambda(nb_epoch))
+    return [lr_scheduler]
 
 
 def dct(nb_epoch: int, optimizer: Optimizer, **kwargs) -> list:
