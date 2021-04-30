@@ -1,0 +1,55 @@
+hydra:
+  hydra_logging:
+    disable_existing_loggers: false
+  run:
+    dir: .
+
+hardware:
+    nb_cpu: 10
+    nb_gpu: 2
+
+dataset:
+    dataset: 'audioset-unbalanced'
+    num_classes: 527
+
+model:
+    model: "MobileNetV2"
+
+train_param:
+    supervised_ratio: 0.1
+    batch_size: 64
+    nb_iteration: 125000
+    learning_rate: 0.003
+    seed: 1234
+    resume: False
+
+    train_folds: None
+    val_folds: None
+
+fixmatch:
+    mask_threshold: 0.75
+    guess_threshold: 0.5
+    lambda_s: 1.0
+    lambda_u: 1.0
+    warmup_length: 50000
+
+mixup:
+    use: False
+    alpha: 1.0
+    max: True
+    label: True
+
+specaugment:
+    use: False
+    time_drop_width: 32
+    time_stripe_num: 1
+    freq_drop_width: 4
+    freq_stripe_num: 1
+    
+path:
+  dataset_root: ../../datasets
+  logs_root: ../..
+  checkpoint_path: ${path.logs_root}/model_save/${dataset.dataset}/supervised
+  tensorboard_path: ${path.logs_root}/tensorboard/${dataset.dataset}/supervised
+  sufix: ''
+  weight: ''
