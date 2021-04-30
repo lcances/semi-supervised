@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import torch.nn as nn
 import librosa
 
-from ubs8k.datasetManager import DatasetManager, conditional_cache_v2
 from SSL.layers import ConvPoolReLU, ConvReLU, ConvBNReLUPool, ConvAdvBNReLUPool, ConvBNPoolReLU6
 
 from typing import Tuple
