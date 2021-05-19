@@ -18,7 +18,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 
-@hydra.main(config_name='../../config/supervised/audioset.yaml')
+@hydra.main(config_name='../../config/supervised/audioset-unbalanced.yaml')
 def run(cfg: DictConfig) -> DictConfig:
     # keep the file directory as the current working directory
     os.chdir(hydra.utils.get_original_cwd())
@@ -70,11 +70,11 @@ def run(cfg: DictConfig) -> DictConfig:
     sufix_title = ''
     sufix_title += f'_{cfg.train_param.learning_rate}-lr'
     sufix_title += f'_{cfg.train_param.supervised_ratio}-sr'
-    sufix_title += f'_{cfg.train_param.nb_epoch}-e'
     sufix_title += f'_{cfg.train_param.batch_size}-bs'
     sufix_title += f'_{cfg.train_param.seed}-seed'
 
     # mixup parameters
+    sufix_mixup = ''
     if cfg.mixup.use:
         sufix_mixup = '_mixup'
         if cfg.mixup.max: sufix_mixup += "-max"
@@ -82,6 +82,7 @@ def run(cfg: DictConfig) -> DictConfig:
         sufix_mixup += f"-{cfg.mixup.alpha}-a"
 
     # SpecAugment parameters
+    sufix_sa = ''
     if cfg.specaugment.use:
         sufix_sa = '_specAugment'
         sufix_sa += f'-{cfg.specaugment.time_drop_width}-tdw'
@@ -99,7 +100,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
     # -------- Optimizer, callbacks, loss and checkpoint --------
     optimizer = load_optimizer(cfg.dataset.dataset, "supervised", learning_rate=cfg.train_param.learning_rate, model=model)
-    # callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_epoch)
+    callbacks = load_callbacks(cfg.dataset.dataset, "supervised", optimizer=optimizer, nb_epoch=cfg.train_param.nb_iteration)
     loss_ce = nn.BCEWithLogitsLoss(reduction="mean")
 
     checkpoint_sufix = sufix_title + sufix_mixup + sufix_sa + f'__{cfg.path.sufix}'
@@ -121,7 +122,7 @@ def run(cfg: DictConfig) -> DictConfig:
     header, train_formater, val_formater = get_train_format('audioset-sup')
 
     # -------- Augmentations ---------
-    spec_augmenter = SpecAugmentation(time_drop_width=cfg.specaugment.time_drop_width,
+    spec_augmenter = SpecAugment(time_drop_width=cfg.specaugment.time_drop_width,
                                       time_stripes_num=cfg.specaugment.time_stripe_num,
                                       freq_drop_width=cfg.specaugment.freq_drop_width,
                                       freq_stripes_num=cfg.specaugment.freq_stripe_num)
@@ -218,7 +219,7 @@ def run(cfg: DictConfig) -> DictConfig:
         T("val/acc", acc.mean(size=100), epoch)
         T("val/mAP", mAP.mean(size=100), epoch)
 
-        T("hyperparameters/learning_rate", get_lr(), epoch)
+        T("hyperparameters/learning_rate", get_lr(optimizer), epoch)
 
         T("max/acc", maximum_tracker("acc", acc.mean(size=100)), epoch)
         T("max/f1", maximum_tracker("f1", fscore.mean(size=100)), epoch)
@@ -231,11 +232,12 @@ def run(cfg: DictConfig) -> DictConfig:
         checkpoint.load_last()
 
     start_iteration = checkpoint.epoch_counter
-    end_iteration = cfg.train_param.nb_epoch
+    end_iteration = cfg.train_param.nb_iteration
 
     train_iterator = iter(train_loader)
     start_time = time.time()
 
+    print(header)
     for e in range(start_iteration, end_iteration):
         # Validation every 500 iteration
         if e % 500 == 0:
@@ -246,6 +248,10 @@ def run(cfg: DictConfig) -> DictConfig:
 
         # Perform train
         train_fn(e, *train_iterator.next(), start_time)
+        
+        # callbacks
+        for c in callbacks:
+            c.step()
 
     # -------- Save the hyper parameters and the metrics --------
     hparams = {
@@ -279,3 +285,7 @@ def run(cfg: DictConfig) -> DictConfig:
 
     tensorboard.flush()
     tensorboard.close()
+    
+
+if __name__ == '__main__':
+    run()

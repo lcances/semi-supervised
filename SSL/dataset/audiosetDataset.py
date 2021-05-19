@@ -272,7 +272,7 @@ class SingleBalancedSampler:
 
             for t_idx in target_idx:
                 class_indexes[t_idx].append(sample_idx)
-
+        
         return class_indexes
 
     def _shuffle(self):
@@ -295,10 +295,12 @@ class SingleBalancedSampler:
         global_index = 0
         for cls_idx in itertools.cycle(range(527)):
             selected_class = self.sorted_sample_indexes[cls_idx]
-            local_idx = global_index % len(selected_class)
-            global_index += 1
+            
+            if len(selected_class) > 0:
+                local_idx = global_index % len(selected_class)
+                global_index += 1
 
-            yield selected_class[local_idx]
+                yield selected_class[local_idx]
 
 
 class ChunkAlignSampler(object):

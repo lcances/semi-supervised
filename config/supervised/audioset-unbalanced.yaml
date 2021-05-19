@@ -23,6 +23,10 @@ train_param:
   seed: 1234
   resume: false
   augmentation: null
+  val_step: 500
+  
+  train_folds: null
+  val_folds: null
 
 mixup:
   use: true
