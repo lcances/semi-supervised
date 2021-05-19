@@ -41,8 +41,8 @@ dataset_info = DotDict({
         'esc10': 'esc10.yaml',
         'speechcommand': 'speechcommand.yaml',
         'ubs8k': 'ubs8k.yaml',
-        'audioset-unbalanced': 'audioset.yaml',
-        'audioset-balanced': 'audioset.yaml',
+        'audioset-unbalanced': 'audioset-unbalanced.yaml',
+        'audioset-balanced': 'audioset-balanced.yaml',
     }),
         
     'nb_class': DotDict({

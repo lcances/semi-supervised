@@ -880,7 +880,7 @@ def get_fixmatch(version: str = "unbalanced", **kwargs):
         u_weak_train_loader = DataLoader(train_weak_dataset, sampler=u_weak_batch_sampler, **l_params)
         u_strong_train_loader = DataLoader(train_strong_dataset, sampler=u_strong_batch_sampler, **l_params)
 
-        train_loader = ZipCycle([s_weak_train_loader, u_weak_train_loader, u_strong_train_loader])
+        train_loader = ZipCycleInfinite([s_weak_train_loader, u_weak_train_loader, u_strong_train_loader])
 
         return None, train_loader, val_loader
     return fixmatch
