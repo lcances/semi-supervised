@@ -1,6 +1,6 @@
-# Semi Supervised Learning
+# Semi Supervised Learning - Deep Co-Training
 
-Application of Deep Co-Training for audio tagging on several audio dataset.
+Application of Deep Co-Training for audio tagging on multiple audio dataset.
 
 # Requirements
 ```bash
